@@ -1,0 +1,294 @@
+import type { CatalogStore } from "./catalog-store.ts";
+import type { ConnectionService } from "./connections/connection-service.ts";
+import type { JsonSchema } from "./core/types.ts";
+import type { IProviderLoader } from "./providers/provider-loader.ts";
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import * as z from "zod/v4";
+import { executeAction as executeProviderAction } from "./core/execution.ts";
+import { renderActionMarkdown } from "./server/action-markdown.ts";
+
+/**
+ * Dependencies required by the local MCP server.
+ */
+export interface IMcpServerOptions {
+  catalog: CatalogStore;
+  providerLoader: IProviderLoader;
+  connections: ConnectionService;
+}
+
+/**
+ * Compact tool descriptor used by HTTP previews and docs.
+ */
+export interface IMcpToolSummary {
+  name: string;
+  title: string;
+  description: string;
+}
+
+const mcpToolSummaries: IMcpToolSummary[] = [
+  {
+    name: "list_apps",
+    title: "List Apps",
+    description: "List available provider apps with connection and action counts.",
+  },
+  {
+    name: "search_actions",
+    title: "Search Actions",
+    description: "Search catalog actions by query and optional provider service id.",
+  },
+  {
+    name: "get_action_guide",
+    title: "Get Action Guide",
+    description:
+      "Return the compact markdown guide for one action, including examples and parameters.",
+  },
+  {
+    name: "execute_action",
+    title: "Execute Action",
+    description: "Execute one local provider action by id with a JSON input object.",
+  },
+];
+
+/**
+ * Return the fixed discovery-oriented MCP tool list.
+ *
+ * The local runtime can contain hundreds of provider actions, so MCP exposes a
+ * small set of search/read/execute tools instead of one tool per provider
+ * action.
+ */
+export function listMcpToolSummaries(): IMcpToolSummary[] {
+  return mcpToolSummaries;
+}
+
+/**
+ * Create a stateless MCP server instance for one Streamable HTTP request.
+ */
+export function createMcpServer(options: IMcpServerOptions): McpServer {
+  const server = new McpServer({
+    name: "oomol-connect",
+    version: "0.1.0",
+  });
+
+  server.registerTool(
+    "list_apps",
+    {
+      title: "List Apps",
+      description: "List available provider apps with connection and action counts.",
+      inputSchema: {
+        query: z
+          .string()
+          .optional()
+          .describe("Optional case-insensitive app name, service, category, or auth filter."),
+      },
+    },
+    async ({ query }) => textResult(listApps(options, query)),
+  );
+
+  server.registerTool(
+    "search_actions",
+    {
+      title: "Search Actions",
+      description:
+        "Search catalog actions by query and optional provider service id. Use this before requesting an action guide.",
+      inputSchema: {
+        query: z
+          .string()
+          .optional()
+          .describe(
+            "Optional case-insensitive search text matched against action id, name, description, and scopes.",
+          ),
+        service: z
+          .string()
+          .optional()
+          .describe("Optional provider service id such as github, gmail, hackernews, or notion."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .default(20)
+          .describe("Maximum number of actions to return."),
+      },
+    },
+    async ({ query, service, limit }) =>
+      textResult(searchActions(options, { query, service, limit })),
+  );
+
+  server.registerTool(
+    "get_action_guide",
+    {
+      title: "Get Action Guide",
+      description:
+        "Return one action's compact markdown guide, including local execute examples and input parameters.",
+      inputSchema: {
+        actionId: z.string().describe("Full action id, for example github.get_current_user."),
+      },
+    },
+    async ({ actionId }) => textResult(getActionGuide(options, actionId)),
+  );
+
+  server.registerTool(
+    "execute_action",
+    {
+      title: "Execute Action",
+      description:
+        "Execute one local provider action by id with a JSON input object. Call get_action_guide first if the input shape is unclear.",
+      inputSchema: {
+        actionId: z.string().describe("Full action id, for example hackernews.get_item."),
+        input: z
+          .record(z.string(), z.unknown())
+          .default({})
+          .describe("Action input object matching the selected action guide."),
+      },
+    },
+    async ({ actionId, input }) => textResult(await executeAction(options, actionId, input)),
+  );
+
+  return server;
+}
+
+function listApps(options: IMcpServerOptions, query: string | undefined): unknown {
+  const normalized = query?.trim().toLowerCase();
+  return options.catalog.providers
+    .filter((provider) => {
+      if (!normalized) {
+        return true;
+      }
+
+      return [
+        provider.service,
+        provider.displayName,
+        provider.categories.join(" "),
+        provider.authTypes.join(" "),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalized);
+    })
+    .map((provider) => ({
+      service: provider.service,
+      displayName: provider.displayName,
+      categories: provider.categories,
+      authTypes: provider.authTypes,
+      actionCount: provider.actions.length,
+    }));
+}
+
+function searchActions(
+  options: IMcpServerOptions,
+  input: { query?: string; service?: string; limit: number },
+): unknown {
+  const normalized = input.query?.trim().toLowerCase();
+  return options.catalog.actions
+    .filter((action) => {
+      if (input.service && action.service !== input.service) {
+        return false;
+      }
+      if (!normalized) {
+        return true;
+      }
+
+      return [action.id, action.name, action.description, action.requiredScopes.join(" ")]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalized);
+    })
+    .slice(0, input.limit)
+    .map((action) => ({
+      id: action.id,
+      service: action.service,
+      name: action.name,
+      description: action.description,
+      requiredScopes: action.requiredScopes,
+      inputSummary: summarizeInputSchema(action.inputSchema),
+    }));
+}
+
+function getActionGuide(options: IMcpServerOptions, actionId: string): unknown {
+  const action = options.catalog.actionsById.get(actionId);
+  if (!action) {
+    return {
+      ok: false,
+      error: {
+        code: "unknown_action",
+        message: `Unknown action: ${actionId}`,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    markdown: renderActionMarkdown(action),
+  };
+}
+
+async function executeAction(
+  options: IMcpServerOptions,
+  actionId: string,
+  input: Record<string, unknown>,
+): Promise<unknown> {
+  const action = options.catalog.actionsById.get(actionId);
+  if (!action) {
+    return {
+      ok: false,
+      error: {
+        code: "unknown_action",
+        message: `Unknown action: ${actionId}`,
+      },
+    };
+  }
+
+  const executor = await options.providerLoader.loadActionExecutor(
+    action.service,
+    action.id,
+    options.catalog.providers.find((provider) => provider.service === action.service)?.displayName,
+  );
+  return executeProviderAction(action, executor, input, options.connections);
+}
+
+function summarizeInputSchema(schema: JsonSchema): unknown {
+  const properties =
+    schema.properties && typeof schema.properties === "object"
+      ? (schema.properties as Record<string, JsonSchema>)
+      : {};
+  const required = new Set(
+    Array.isArray(schema.required)
+      ? schema.required.filter((value): value is string => typeof value === "string")
+      : [],
+  );
+
+  return Object.entries(properties).map(([name, property]) => ({
+    name,
+    required: required.has(name),
+    type: describeSchemaType(property),
+    description: typeof property.description === "string" ? property.description : "",
+  }));
+}
+
+function describeSchemaType(schema: JsonSchema | undefined): string {
+  if (!schema) {
+    return "unknown";
+  }
+  if (schema.const !== undefined) {
+    return JSON.stringify(schema.const);
+  }
+  if (Array.isArray(schema.enum)) {
+    return schema.enum.map((value) => JSON.stringify(value)).join(" | ");
+  }
+  if (Array.isArray(schema.anyOf)) {
+    return schema.anyOf.map((value) => describeSchemaType(value as JsonSchema)).join(" | ");
+  }
+  return typeof schema.type === "string" ? schema.type : "unknown";
+}
+
+function textResult(value: unknown): { content: Array<{ type: "text"; text: string }> } {
+  return {
+    content: [
+      {
+        type: "text",
+        text: typeof value === "string" ? value : JSON.stringify(value, null, 2),
+      },
+    ],
+  };
+}

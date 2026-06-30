@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "node src/server/index.ts",
-    "build": "npm run generate:registry && tsc -p src/tsconfig.json",
+    "build": "npm run generate:registry && tsc -b",
     "build:web": "npm run build --workspace web",
     "dev:web": "npm run dev --workspace web",
     "start": "node src/server/index.ts",

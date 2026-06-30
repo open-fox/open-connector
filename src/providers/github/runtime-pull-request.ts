@@ -1,10 +1,6 @@
 import type { GitHubActionHandler } from "./runtime-shared.ts";
 
-import {
-  optionalBoolean,
-  optionalInteger,
-  optionalText as optionalString,
-} from "../../core/cast.ts";
+import { optionalBoolean, optionalInteger, optionalRawString, optionalString } from "../../core/cast.ts";
 import {
   buildGitHubUrl,
   compactObject,
@@ -51,7 +47,7 @@ export const pullRequestActionHandlers: Record<string, GitHubActionHandler> = {
       method: "POST",
       path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/reviews`,
       body: compactObject({
-        body: optionalString(input.body),
+        body: optionalRawString(input.body),
         event: optionalString(input.event),
         commit_id: optionalString(input.commitId),
         comments: Array.isArray(input.comments)
@@ -69,7 +65,7 @@ export const pullRequestActionHandlers: Record<string, GitHubActionHandler> = {
       path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/reviews/${String(input.reviewId)}/events`,
       body: compactObject({
         event: String(input.event),
-        body: optionalString(input.body),
+        body: optionalRawString(input.body),
       }),
       accessToken,
       fetcher,
@@ -122,7 +118,7 @@ export const pullRequestActionHandlers: Record<string, GitHubActionHandler> = {
         title: String(input.title),
         head: String(input.head),
         base: String(input.base),
-        body: optionalString(input.body),
+        body: optionalRawString(input.body),
         draft: optionalBoolean(input.draft),
         maintainer_can_modify: optionalBoolean(input.maintainerCanModify),
       }),
@@ -136,8 +132,8 @@ export const pullRequestActionHandlers: Record<string, GitHubActionHandler> = {
       method: "PATCH",
       path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}`,
       body: compactObject({
-        title: optionalString(input.title),
-        body: input.body === "" ? "" : optionalString(input.body),
+        title: optionalRawString(input.title),
+        body: optionalRawString(input.body),
         state: optionalString(input.state),
         base: optionalString(input.base),
         maintainer_can_modify: optionalBoolean(input.maintainerCanModify),
@@ -164,8 +160,8 @@ export const pullRequestActionHandlers: Record<string, GitHubActionHandler> = {
       method: "PUT",
       path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/merge`,
       body: compactObject({
-        commit_title: optionalString(input.commitTitle),
-        commit_message: optionalString(input.commitMessage),
+        commit_title: optionalRawString(input.commitTitle),
+        commit_message: optionalRawString(input.commitMessage),
         sha: optionalString(input.sha),
         merge_method: optionalString(input.mergeMethod),
       }),
@@ -186,7 +182,7 @@ export const pullRequestActionHandlers: Record<string, GitHubActionHandler> = {
         state: String(input.state),
         context: optionalString(input.context),
         target_url: optionalString(input.targetUrl),
-        description: optionalString(input.description),
+        description: optionalRawString(input.description),
       }),
       accessToken,
       fetcher,
@@ -234,11 +230,7 @@ export const pullRequestActionHandlers: Record<string, GitHubActionHandler> = {
   },
 };
 
-async function listPullRequests(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listPullRequests(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const pullRequests = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls`,
     query: compactObject({
@@ -275,11 +267,7 @@ async function listPullRequestsAssociatedWithCommit(
   return { pull_requests: pullRequests };
 }
 
-async function listPullRequestFiles(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listPullRequestFiles(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const files = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/files`,
     query: compactObject({
@@ -293,11 +281,7 @@ async function listPullRequestFiles(
   return { files };
 }
 
-async function listPullRequestCommits(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listPullRequestCommits(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const commits = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/commits`,
     query: compactObject({
@@ -328,11 +312,7 @@ async function listPullRequestRequestedReviewers(
   };
 }
 
-async function listPullRequestReviews(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listPullRequestReviews(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const reviews = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/reviews`,
     query: compactObject({
@@ -367,11 +347,7 @@ async function listPullRequestReviewComments(
   return { comments };
 }
 
-async function updatePullRequestBranch(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function updatePullRequestBranch(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await githubRequestJson<Record<string, unknown>>({
     method: "PUT",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/update-branch`,
@@ -388,19 +364,13 @@ async function updatePullRequestBranch(
   };
 }
 
-async function requestPullRequestReviewers(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function requestPullRequestReviewers(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await githubRequestJson<Record<string, unknown>>({
     method: "POST",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/requested_reviewers`,
     body: compactObject({
       reviewers: Array.isArray(input.reviewers) ? input.reviewers.map(String) : undefined,
-      team_reviewers: Array.isArray(input.teamReviewers)
-        ? input.teamReviewers.map(String)
-        : undefined,
+      team_reviewers: Array.isArray(input.teamReviewers) ? input.teamReviewers.map(String) : undefined,
     }),
     accessToken,
     fetcher,
@@ -409,19 +379,13 @@ async function requestPullRequestReviewers(
   return normalizeRequestedReviewersResponse(payload);
 }
 
-async function removePullRequestReviewers(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function removePullRequestReviewers(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await githubRequestJson<Record<string, unknown>>({
     method: "DELETE",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/requested_reviewers`,
     body: compactObject({
       reviewers: Array.isArray(input.reviewers) ? input.reviewers.map(String) : undefined,
-      team_reviewers: Array.isArray(input.teamReviewers)
-        ? input.teamReviewers.map(String)
-        : undefined,
+      team_reviewers: Array.isArray(input.teamReviewers) ? input.teamReviewers.map(String) : undefined,
     }),
     accessToken,
     fetcher,
@@ -430,11 +394,7 @@ async function removePullRequestReviewers(
   return normalizeRequestedReviewersResponse(payload);
 }
 
-async function checkPullRequestMerged(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function checkPullRequestMerged(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await fetcher(
     buildGitHubUrl(
       `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/pulls/${String(input.pullNumber)}/merge`,
@@ -460,11 +420,7 @@ async function checkPullRequestMerged(
   throw normalizeGitHubError(response, payload, "unexpected github merge-status");
 }
 
-async function getCommitStatuses(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function getCommitStatuses(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const statuses = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/commits/${encodeURIComponent(String(input.ref))}/statuses`,
     query: compactObject({
@@ -478,11 +434,7 @@ async function getCommitStatuses(
   return { statuses };
 }
 
-async function listCheckRunsForRef(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listCheckRunsForRef(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/commits/${encodeURIComponent(String(input.ref))}/check-runs`,
     query: compactObject({
@@ -499,17 +451,11 @@ async function listCheckRunsForRef(
 
   return {
     total_count: Number(response.total_count ?? 0),
-    check_runs: Array.isArray(response.check_runs)
-      ? (response.check_runs as Record<string, unknown>[])
-      : [],
+    check_runs: Array.isArray(response.check_runs) ? (response.check_runs as Record<string, unknown>[]) : [],
   };
 }
 
-async function rerequestCheckRun(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function rerequestCheckRun(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   await githubRequestNoContent({
     method: "POST",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/check-runs/${String(input.checkRunId)}/rerequest`,
@@ -520,11 +466,7 @@ async function rerequestCheckRun(
   return { ok: true };
 }
 
-async function rerequestCheckSuite(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function rerequestCheckSuite(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   await githubRequestNoContent({
     method: "POST",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/check-suites/${String(input.checkSuiteId)}/rerequest`,
@@ -535,11 +477,7 @@ async function rerequestCheckSuite(
   return { ok: true };
 }
 
-async function listRepositoryWorkflows(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listRepositoryWorkflows(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/actions/workflows`,
     query: compactObject({
@@ -552,17 +490,11 @@ async function listRepositoryWorkflows(
 
   return {
     total_count: Number(response.total_count ?? 0),
-    workflows: Array.isArray(response.workflows)
-      ? (response.workflows as Record<string, unknown>[])
-      : [],
+    workflows: Array.isArray(response.workflows) ? (response.workflows as Record<string, unknown>[]) : [],
   };
 }
 
-async function listWorkflowRuns(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listWorkflowRuns(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/actions/runs`,
     query: compactObject({
@@ -583,17 +515,11 @@ async function listWorkflowRuns(
 
   return {
     total_count: Number(response.total_count ?? 0),
-    workflow_runs: Array.isArray(response.workflow_runs)
-      ? (response.workflow_runs as Record<string, unknown>[])
-      : [],
+    workflow_runs: Array.isArray(response.workflow_runs) ? (response.workflow_runs as Record<string, unknown>[]) : [],
   };
 }
 
-async function listWorkflowRunJobs(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listWorkflowRunJobs(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/actions/runs/${String(input.runId)}/jobs`,
     query: compactObject({
@@ -611,11 +537,7 @@ async function listWorkflowRunJobs(
   };
 }
 
-async function rerunWorkflow(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function rerunWorkflow(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   await githubRequestNoContent({
     method: "POST",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/actions/runs/${String(input.runId)}/rerun`,

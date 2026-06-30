@@ -275,7 +275,4 @@ export type ActionExecutor<TInput = unknown, TOutput = unknown> = (
  *
  * Keys are full action ids and must start with the provider service id.
  */
-export type ProviderExecutors<Service extends string = string> = Record<
-  `${Service}.${string}`,
-  ActionExecutor
->;
+export type ProviderExecutors<Service extends string = string> = Record<`${Service}.${string}`, ActionExecutor>;

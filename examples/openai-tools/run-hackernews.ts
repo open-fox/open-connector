@@ -1,24 +1,26 @@
 // OpenAI Responses API docs: https://platform.openai.com/docs/api-reference/responses/create
 // OpenAI function calling flow: https://platform.openai.com/docs/guides/function-calling
 
-type CatalogAction = {
+import { localHeaders } from "../local-http/client.ts";
+
+interface CatalogAction {
   id: string;
   description: string;
   inputSchema: unknown;
-};
+}
 
-type OpenAiFunctionTool = {
+interface OpenAiFunctionTool {
   type: "function";
   name: string;
   description: string;
   parameters: unknown;
-};
+}
 
-type OpenAiResponse = {
+interface OpenAiResponse {
   id: string;
   output?: OpenAiOutputItem[];
   output_text?: string;
-};
+}
 
 type OpenAiOutputItem =
   | OpenAiFunctionCall
@@ -28,12 +30,12 @@ type OpenAiOutputItem =
       content?: Array<{ type: string; text?: string }>;
     };
 
-type OpenAiFunctionCall = {
+interface OpenAiFunctionCall {
   type: "function_call";
   call_id: string;
   name: string;
   arguments: string;
-};
+}
 
 const apiKey = process.env.OPENAI_API_KEY;
 if (!apiKey) {
@@ -46,13 +48,13 @@ if (!model) {
   console.log("Set OPENAI_MODEL to run this example.");
   process.exit(0);
 }
-const actionsResponse = await fetch("http://localhost:3000/api/actions");
+const actionsResponse = await fetch("http://localhost:3000/api/actions", {
+  headers: localHeaders(),
+});
 const actions = ((await actionsResponse.json()) as CatalogAction[]).filter((action) =>
   action.id.startsWith("hackernews."),
 );
-const toolNameToActionId = new Map(
-  actions.map((action) => [toOpenAiToolName(action.id), action.id]),
-);
+const toolNameToActionId = new Map(actions.map((action) => [toOpenAiToolName(action.id), action.id]));
 const tools: OpenAiFunctionTool[] = actions.map((action) => ({
   type: "function",
   name: toOpenAiToolName(action.id),
@@ -77,7 +79,7 @@ for (const toolCall of toolCalls) {
 
   const executionResponse = await fetch(`http://localhost:3000/api/actions/${actionId}/execute`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: localHeaders({ "content-type": "application/json" }),
     body: JSON.stringify({ input: JSON.parse(toolCall.arguments || "{}") }),
   });
   const executionResult = await executionResponse.json();
@@ -96,11 +98,7 @@ if (toolCalls.length > 0) {
 
 console.log(response.output_text ?? JSON.stringify(response.output, null, 2));
 
-async function createResponse(
-  model: string,
-  tools: OpenAiFunctionTool[],
-  input: unknown[],
-): Promise<OpenAiResponse> {
+async function createResponse(model: string, tools: OpenAiFunctionTool[], input: unknown[]): Promise<OpenAiResponse> {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {

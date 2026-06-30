@@ -1,6 +1,8 @@
 // Gmail API docs: https://developers.google.com/gmail/api/reference/rest
 // Google OAuth redirect URI for this local runtime: http://localhost:3000/oauth/callback/gmail
 
+import { localHeaders } from "./client.ts";
+
 const clientId = process.env.GMAIL_CLIENT_ID;
 const clientSecret = process.env.GMAIL_CLIENT_SECRET;
 if (!clientId || !clientSecret) {
@@ -10,13 +12,13 @@ if (!clientId || !clientSecret) {
 
 await fetch("http://localhost:3000/api/oauth/configs/gmail", {
   method: "PUT",
-  headers: { "content-type": "application/json" },
+  headers: localHeaders({ "content-type": "application/json" }),
   body: JSON.stringify({ clientId, clientSecret }),
 });
 
 const response = await fetch("http://localhost:3000/api/connections/gmail/oauth/start", {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: localHeaders({ "content-type": "application/json" }),
   body: JSON.stringify({}),
 });
 const started = (await response.json()) as { authorizationUrl?: string };

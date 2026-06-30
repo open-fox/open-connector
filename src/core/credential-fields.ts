@@ -23,9 +23,7 @@ export type NormalizeCredentialValuesOptions = {
  * callers may only submit fields declared by the provider, and required fields
  * must contain non-empty string values.
  */
-export function normalizeCredentialValues(
-  options: NormalizeCredentialValuesOptions,
-): Record<string, string> {
+export function normalizeCredentialValues(options: NormalizeCredentialValuesOptions): Record<string, string> {
   const values = stringRecord(options.values);
   const fieldsByKey = new Map(options.fields.map((field) => [field.key, field]));
 

@@ -1,22 +1,21 @@
 import type { CatalogStore } from "../catalog-store.ts";
-import type { ConnectionService } from "../connections/connection-service.ts";
+import type { ConnectionService } from "../connection-service.ts";
+import type { ActionPolicyService } from "../core/action-policy.ts";
 import type { IProviderLoader } from "../providers/provider-loader.ts";
-import type { IRunLogStore } from "./runtime-store.ts";
+import type { LocalAuthOptions } from "./auth.ts";
 import type { Context } from "hono";
 
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
-import { ConnectionError } from "../connections/connection-service.ts";
+import { ConnectionError } from "../connection-service.ts";
 import { optionalRecord, optionalString } from "../core/cast.ts";
-import { executeAction as executeProviderAction } from "../core/execution.ts";
 import { createMcpServer, listMcpToolSummaries } from "../mcp.ts";
-import {
-  OAuthClientConfigError,
-  OAuthClientConfigService,
-} from "../oauth/oauth-client-config-service.ts";
+import { OAuthClientConfigError, OAuthClientConfigService } from "../oauth/oauth-client-config-service.ts";
 import { OAuthFlowError, OAuthFlowService } from "../oauth/oauth-flow-service.ts";
 import { renderActionMarkdown } from "./action-markdown.ts";
+import { ActionRunner } from "./action-runner.ts";
+import { createLocalAuthMiddleware, installLocalAuthCookie } from "./auth.ts";
 import { escapeHtml, internalError, jsonError, notFound, readJsonBody } from "./http-utils.ts";
 import { createOpenApiDocument } from "./openapi.ts";
 import { registerStaticRoutes } from "./static-routes.ts";
@@ -30,8 +29,10 @@ export interface IConnectServerOptions {
   connections: ConnectionService;
   oauthClientConfigs: OAuthClientConfigService;
   oauthFlow: OAuthFlowService;
-  runs: IRunLogStore;
+  actions: ActionRunner;
   staticRoot: string;
+  auth?: LocalAuthOptions;
+  actionPolicy?: ActionPolicyService;
 }
 
 /**
@@ -47,8 +48,10 @@ export class ConnectServer {
 
   createApp(): Hono {
     const app = new Hono();
+    const auth = this.options.auth ?? {};
 
     app.get("/health", (context) => context.json({ ok: true }));
+    app.use("*", createLocalAuthMiddleware(auth));
     app.get("/openapi.json", (context) =>
       context.json(
         createOpenApiDocument(this.options.catalog.providers, {
@@ -74,20 +77,14 @@ export class ConnectServer {
     );
 
     app.get("/api/apps", (context) => context.json(this.options.catalog.providers));
-    app.get("/api/apps/:service", (context) =>
-      this.getProvider(context, context.req.param("service")),
-    );
+    app.get("/api/apps/:service", (context) => this.getProvider(context, context.req.param("service")));
 
     app.get("/api/actions", (context) => context.json(this.options.catalog.actions));
-    app.get("/api/actions/:actionId", (context) =>
-      this.getAction(context, context.req.param("actionId")),
-    );
+    app.get("/api/actions/:actionId", (context) => this.getAction(context, context.req.param("actionId")));
     app.get("/api/actions/:actionId/agent.md", (context) =>
       this.getActionMarkdown(context, context.req.param("actionId")),
     );
-    app.post("/api/actions/:actionId/execute", (context) =>
-      this.executeAction(context, context.req.param("actionId")),
-    );
+    app.post("/api/actions/:actionId/execute", (context) => this.executeAction(context, context.req.param("actionId")));
 
     app.get("/api/connections", (context) => this.listConnections(context));
     app.post("/api/connections/:service/no-auth", (context) =>
@@ -99,27 +96,25 @@ export class ConnectServer {
     app.put("/api/connections/:service/custom-credential", (context) =>
       this.connectWithCustomCredential(context, context.req.param("service")),
     );
-    app.delete("/api/connections/:service", (context) =>
-      this.disconnect(context, context.req.param("service")),
-    );
+    app.delete("/api/connections/:service", (context) => this.disconnect(context, context.req.param("service")));
     app.post("/api/connections/:service/oauth/start", (context) =>
       this.startOAuth(context, context.req.param("service")),
     );
 
-    app.get("/api/runs", (context) => context.json(this.options.runs.list()));
+    app.get("/api/runs", (context) => context.json(this.options.actions.listRuns()));
     app.get("/api/oauth/configs", (context) => this.listOAuthConfigs(context));
-    app.put("/api/oauth/configs/:service", (context) =>
-      this.upsertOAuthConfig(context, context.req.param("service")),
-    );
+    app.put("/api/oauth/configs/:service", (context) => this.upsertOAuthConfig(context, context.req.param("service")));
     app.delete("/api/oauth/configs/:service", (context) =>
       this.deleteOAuthConfig(context, context.req.param("service")),
     );
-    app.get("/oauth/callback/:service", (context) =>
-      this.completeOAuth(context, context.req.param("service")),
-    );
+    app.get("/oauth/callback/:service", (context) => this.completeOAuth(context, context.req.param("service")));
     app.all("/mcp", (context) => this.handleMcp(context));
     app.get("/mcp/tools", (context) => context.json({ tools: listMcpToolSummaries() }));
 
+    app.use("*", async (context, next) => {
+      installLocalAuthCookie(context, auth);
+      await next();
+    });
     registerStaticRoutes(app, this.options.staticRoot);
     app.onError((error, context) => internalError(context, error));
 
@@ -127,9 +122,7 @@ export class ConnectServer {
   }
 
   private getProvider(context: Context, service: string): Response {
-    const provider = this.options.catalog.providers.find(
-      (provider) => provider.service === service,
-    );
+    const provider = this.options.catalog.providers.find((provider) => provider.service === service);
     if (!provider) {
       return notFound(context);
     }
@@ -164,28 +157,14 @@ export class ConnectServer {
     }
 
     const body = await readJsonBody(context);
-    const startedAt = new Date().toISOString();
-    const executor = await this.options.providerLoader.loadActionExecutor(
-      action.service,
-      action.id,
-      this.options.catalog.providers.find((provider) => provider.service === action.service)
-        ?.displayName,
-    );
-    const result = await executeProviderAction(
-      action,
-      executor,
-      body.input ?? {},
-      this.options.connections,
-    );
-    const completedAt = new Date().toISOString();
-
-    this.options.runs.add({
-      id: crypto.randomUUID(),
+    const result = await this.options.actions.run({
       actionId,
-      startedAt,
-      completedAt,
-      ok: result.ok,
+      input: body.input ?? {},
+      caller: "http",
     });
+    if (!result) {
+      return notFound(context);
+    }
 
     return context.json(result, result.ok ? 200 : 400);
   }
@@ -199,6 +178,8 @@ export class ConnectServer {
       catalog: this.options.catalog,
       providerLoader: this.options.providerLoader,
       connections: this.options.connections,
+      actions: this.options.actions,
+      actionPolicy: this.options.actionPolicy,
     });
 
     await server.connect(transport);
@@ -214,19 +195,13 @@ export class ConnectServer {
   }
 
   private async connectWithoutAuth(context: Context, service: string): Promise<Response> {
-    return this.writeConnectionResult(
-      context,
-      this.options.connections.connectWithoutAuth(service),
-    );
+    return this.writeConnectionResult(context, this.options.connections.connectWithoutAuth(service));
   }
 
   private async connectWithApiKey(context: Context, service: string): Promise<Response> {
     const body = await readJsonBody(context);
     const values = body.values ?? body;
-    return this.writeConnectionResult(
-      context,
-      this.options.connections.connectWithApiKey(service, { values }),
-    );
+    return this.writeConnectionResult(context, this.options.connections.connectWithApiKey(service, { values }));
   }
 
   private async connectWithCustomCredential(context: Context, service: string): Promise<Response> {
@@ -271,18 +246,10 @@ export class ConnectServer {
     const state = context.req.query("state");
     const code = context.req.query("code");
     if (!state || !code) {
-      return jsonError(
-        context,
-        400,
-        "invalid_oauth_callback",
-        "OAuth callback requires state and code.",
-      );
+      return jsonError(context, 400, "invalid_oauth_callback", "OAuth callback requires state and code.");
     }
 
-    const result = await this.writeOAuthResult(
-      context,
-      this.options.oauthFlow.completeAuthorization({ state, code }),
-    );
+    const result = await this.writeOAuthResult(context, this.options.oauthFlow.completeAuthorization({ state, code }));
     if (result.status >= 400) {
       return result;
     }
@@ -292,20 +259,12 @@ export class ConnectServer {
     );
   }
 
-  private async writeConnectionResult(
-    context: Context,
-    operation: Promise<unknown>,
-  ): Promise<Response> {
+  private async writeConnectionResult(context: Context, operation: Promise<unknown>): Promise<Response> {
     try {
       return context.json(await operation);
     } catch (error) {
       if (error instanceof ConnectionError) {
-        return jsonError(
-          context,
-          error.code === "unknown_service" ? 404 : 400,
-          error.code,
-          error.message,
-        );
+        return jsonError(context, error.code === "unknown_service" ? 404 : 400, error.code, error.message);
       }
 
       throw error;
@@ -317,12 +276,7 @@ export class ConnectServer {
       return context.json(await operation);
     } catch (error) {
       if (error instanceof OAuthClientConfigError || error instanceof OAuthFlowError) {
-        return jsonError(
-          context,
-          error.code === "unknown_service" ? 404 : 400,
-          error.code,
-          error.message,
-        );
+        return jsonError(context, error.code === "unknown_service" ? 404 : 400, error.code, error.message);
       }
 
       throw error;

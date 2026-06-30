@@ -132,11 +132,7 @@ export const provider: ProviderDefinition = {
   homepageUrl: "https://news.ycombinator.com",
   actions: [
     storyListAction("get_ask_stories", "Get the latest Ask HN story IDs from Hacker News.", false),
-    storyListAction(
-      "get_best_stories",
-      "Get the best story IDs from Hacker News ranked by score.",
-      true,
-    ),
+    storyListAction("get_best_stories", "Get the best story IDs from Hacker News ranked by score.", true),
     defineProviderAction(service, {
       name: "get_item",
       description: "Get a Hacker News item by its numeric ID.",
@@ -157,10 +153,7 @@ export const provider: ProviderDefinition = {
       description: "Get a Hacker News item with a bounded nested comment tree.",
       inputSchema: s.object(
         {
-          item_id: s.union([
-            positiveId,
-            s.stringPattern("^\\d+$", { description: "A numeric item ID as a string." }),
-          ]),
+          item_id: s.union([positiveId, s.stringPattern("^\\d+$", { description: "A numeric item ID as a string." })]),
           max_depth: s.integer({
             minimum: 0,
             maximum: 10,
@@ -216,16 +209,8 @@ export const provider: ProviderDefinition = {
       ),
     }),
     storyListAction("get_new_stories", "Get the newest story IDs from Hacker News.", true),
-    storyListAction(
-      "get_show_stories",
-      "Get the latest Show HN story IDs from Hacker News.",
-      false,
-    ),
-    storyListAction(
-      "get_top_stories",
-      "Get the top story IDs from Hacker News sorted by front page position.",
-      true,
-    ),
+    storyListAction("get_show_stories", "Get the latest Show HN story IDs from Hacker News.", false),
+    storyListAction("get_top_stories", "Get the top story IDs from Hacker News sorted by front page position.", true),
     defineProviderAction(service, {
       name: "get_updates",
       description: "Get recently changed items and user profiles from Hacker News.",
@@ -288,11 +273,7 @@ export const provider: ProviderDefinition = {
   ],
 };
 
-function storyListAction(
-  name: string,
-  description: string,
-  includeCount: boolean,
-): JsonSchemaAction {
+function storyListAction(name: string, description: string, includeCount: boolean): JsonSchemaAction {
   return defineProviderAction(service, {
     name,
     description,
@@ -302,32 +283,29 @@ function storyListAction(
 }
 
 function searchInput(requireQuery: boolean): JsonSchema {
-  return s.object(
-    {
-      ...(requireQuery
-        ? {
-            query: s.string({ description: "The search query text." }),
-          }
-        : {}),
-      page: s.integer({
-        minimum: 0,
-        maximum: Number.MAX_SAFE_INTEGER,
-        default: 0,
-        description: "The page number to fetch.",
-      }),
-      size: s.integer({
-        minimum: 0,
-        maximum: 20,
-        default: 5,
-        description: "The number of results per page.",
-      }),
-      tags: s.array(s.string(), { description: "Algolia filter tags." }),
-    },
-    {
-      required: requireQuery ? ["query", "page", "size"] : ["page", "size"],
-      description: "Algolia search input.",
-    },
-  );
+  const properties: Record<string, JsonSchema> = {
+    page: s.integer({
+      minimum: 0,
+      maximum: Number.MAX_SAFE_INTEGER,
+      default: 0,
+      description: "The page number to fetch.",
+    }),
+    size: s.integer({
+      minimum: 0,
+      maximum: 20,
+      default: 5,
+      description: "The number of results per page.",
+    }),
+    tags: s.array(s.string(), { description: "Algolia filter tags." }),
+  };
+  if (requireQuery) {
+    properties.query = s.string({ description: "The search query text." });
+  }
+
+  return s.object(properties, {
+    required: requireQuery ? ["query", "page", "size"] : ["page", "size"],
+    description: "Algolia search input.",
+  });
 }
 
 function searchOutput(description: string, extra: Record<string, JsonSchema> = {}): JsonSchema {

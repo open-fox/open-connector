@@ -1,15 +1,7 @@
-import type {
-  CredentialValidators,
-  ExecutionContext,
-  ProviderExecutors,
-} from "../../core/types.ts";
+import type { CredentialValidators, ExecutionContext, ProviderExecutors } from "../../core/types.ts";
 import type { GmailDraftResource, GmailMessageResource, GmailThreadResource } from "./message.ts";
 
-import {
-  defineProviderExecutors,
-  ProviderRequestError,
-  requireOAuthCredential,
-} from "../provider-runtime.ts";
+import { defineProviderExecutors, ProviderRequestError, requireOAuthCredential } from "../provider-runtime.ts";
 import {
   buildRecipients,
   encodeMimeMessage,
@@ -28,11 +20,11 @@ const gmailApiBaseUrl = "https://gmail.googleapis.com/gmail/v1";
 const detailHydrationBatchSize = 10;
 const defaultFetchEmailsMaxResults = 20;
 
-type ActionContext = {
+interface ActionContext {
   userId: string;
   accessToken: string;
   fetcher: typeof fetch;
-};
+}
 
 type ActionHandler = (input: Record<string, unknown>, context: ActionContext) => Promise<unknown>;
 
@@ -53,13 +45,7 @@ export const gmailActionHandlers: Record<string, ActionHandler> = {
     return fetchEmails(input, userId, accessToken, fetcher);
   },
   async get_message(input, { userId, accessToken, fetcher }) {
-    const message = await getMessageResource(
-      userId,
-      normalizeMessageId(input.messageId),
-      accessToken,
-      fetcher,
-      "full",
-    );
+    const message = await getMessageResource(userId, normalizeMessageId(input.messageId), accessToken, fetcher, "full");
     const output = normalizeGmailMessage(message);
     return {
       messageId: output.messageId,
@@ -216,15 +202,10 @@ export const credentialValidators: CredentialValidators = {
   },
 };
 
-async function fetchEmails(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
-  const detail = optionalString(input.detail) ?? "summary";
+async function fetchEmails(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
+  const detail = trimmedString(input.detail) || "summary";
   const url = new URL(gmailUserUrl(userId, "messages"));
-  const query = optionalString(input.query);
+  const query = trimmedString(input.query);
   if (query) {
     url.searchParams.set("q", query);
   }
@@ -234,8 +215,7 @@ async function fetchEmails(
   if (input.pageToken != null) {
     url.searchParams.set("pageToken", String(input.pageToken));
   }
-  const maxResults =
-    normalizeOptionalPositiveInteger(input.maxResults) ?? defaultFetchEmailsMaxResults;
+  const maxResults = normalizeOptionalPositiveInteger(input.maxResults) ?? defaultFetchEmailsMaxResults;
   url.searchParams.set("maxResults", String(maxResults));
   if (input.includeSpamTrash != null) {
     url.searchParams.set("includeSpamTrash", String(Boolean(input.includeSpamTrash)));
@@ -281,13 +261,7 @@ async function fetchMessageByMessageId(
   fetcher: typeof fetch,
 ) {
   const format = normalizeFormat(input.format, "full");
-  const message = await getMessageResource(
-    userId,
-    normalizeMessageId(input.messageId),
-    accessToken,
-    fetcher,
-    format,
-  );
+  const message = await getMessageResource(userId, normalizeMessageId(input.messageId), accessToken, fetcher, format);
 
   return normalizeGmailMessage(message);
 }
@@ -298,13 +272,7 @@ async function fetchMessagesByThreadId(
   accessToken: string,
   fetcher: typeof fetch,
 ) {
-  const thread = await getThreadResource(
-    userId,
-    normalizeThreadId(input.threadId),
-    accessToken,
-    fetcher,
-    "full",
-  );
+  const thread = await getThreadResource(userId, normalizeThreadId(input.threadId), accessToken, fetcher, "full");
 
   return {
     threadId: thread.id,
@@ -313,14 +281,9 @@ async function fetchMessagesByThreadId(
   };
 }
 
-async function listThreads(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listThreads(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   const url = new URL(gmailUserUrl(userId, "threads"));
-  const query = optionalString(input.query);
+  const query = trimmedString(input.query);
   if (query) {
     url.searchParams.set("q", query);
   }
@@ -365,12 +328,7 @@ async function listThreads(
   };
 }
 
-async function sendEmail(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function sendEmail(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   const recipients = buildRecipients(input);
   const response = await fetchJson<{ id: string; threadId?: string }>(
     gmailUserUrl(userId, "messages", "send"),
@@ -383,10 +341,10 @@ async function sendEmail(
           to: recipients.to,
           cc: recipients.cc,
           bcc: recipients.bcc,
-          subject: optionalString(input.subject),
-          body: optionalString(input.body) || optionalString(input.messageBody),
+          subject: trimmedString(input.subject),
+          body: trimmedString(input.body) || trimmedString(input.messageBody),
           isHtml: input.isHtml === true,
-          from: optionalString(input.fromEmail),
+          from: trimmedString(input.fromEmail),
         }),
       }),
     },
@@ -401,13 +359,7 @@ async function replyToThread(
   accessToken: string,
   fetcher: typeof fetch,
 ) {
-  const thread = await getThreadResource(
-    userId,
-    normalizeThreadId(input.threadId),
-    accessToken,
-    fetcher,
-    "full",
-  );
+  const thread = await getThreadResource(userId, normalizeThreadId(input.threadId), accessToken, fetcher, "full");
   const target = thread.messages?.at(-1);
   if (!target) {
     throw new ProviderRequestError(400, "thread has no messages");
@@ -425,7 +377,7 @@ async function replyToThread(
       cc: recipients.cc,
       bcc: recipients.bcc,
       subject: replyHeaders.subject,
-      body: optionalString(input.messageBody) || optionalString(input.body),
+      body: trimmedString(input.messageBody) || trimmedString(input.body),
       isHtml: input.isHtml === true,
       inReplyTo: replyHeaders.inReplyTo,
       references: replyHeaders.references,
@@ -441,13 +393,7 @@ async function replyToMessage(
   accessToken: string,
   fetcher: typeof fetch,
 ) {
-  const message = await getMessageResource(
-    userId,
-    normalizeMessageId(input.messageId),
-    accessToken,
-    fetcher,
-    "full",
-  );
+  const message = await getMessageResource(userId, normalizeMessageId(input.messageId), accessToken, fetcher, "full");
   const replyHeaders = resolveReplyHeaders(message);
   const threadId = normalizeThreadId(message.threadId || input.threadId);
   const response = await sendThreadMessage(
@@ -458,7 +404,7 @@ async function replyToMessage(
     encodeMimeMessage({
       to: [replyHeaders.to],
       subject: replyHeaders.subject,
-      body: optionalString(input.body),
+      body: trimmedString(input.body),
       inReplyTo: replyHeaders.inReplyTo,
       references: replyHeaders.references,
     }),
@@ -477,30 +423,23 @@ async function createEmailDraft(
   fetcher: typeof fetch,
 ) {
   const recipients = buildRecipients(input);
-  const payload = await fetchJson<GmailDraftResource>(
-    gmailUserUrl(userId, "drafts"),
-    accessToken,
-    fetcher,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        message: {
-          raw: encodeMimeMessage({
-            to: recipients.to,
-            cc: recipients.cc,
-            bcc: recipients.bcc,
-            subject: optionalString(input.subject),
-            body: optionalString(input.body) || optionalString(input.messageBody),
-            isHtml: input.isHtml === true,
-            from: optionalString(input.fromEmail),
-          }),
-          ...(optionalString(input.threadId)
-            ? { threadId: normalizeThreadId(input.threadId) }
-            : {}),
-        },
-      }),
-    },
-  );
+  const payload = await fetchJson<GmailDraftResource>(gmailUserUrl(userId, "drafts"), accessToken, fetcher, {
+    method: "POST",
+    body: JSON.stringify({
+      message: {
+        raw: encodeMimeMessage({
+          to: recipients.to,
+          cc: recipients.cc,
+          bcc: recipients.bcc,
+          subject: trimmedString(input.subject),
+          body: trimmedString(input.body) || trimmedString(input.messageBody),
+          isHtml: input.isHtml === true,
+          from: trimmedString(input.fromEmail),
+        }),
+        threadId: trimmedString(input.threadId) ? normalizeThreadId(input.threadId) : undefined,
+      },
+    }),
+  });
 
   return {
     draftId: payload.id,
@@ -509,12 +448,7 @@ async function createEmailDraft(
   };
 }
 
-async function listDrafts(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listDrafts(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   const url = new URL(gmailUserUrl(userId, "drafts"));
   if (input.pageToken != null) {
     url.searchParams.set("pageToken", String(input.pageToken));
@@ -554,12 +488,7 @@ async function listDrafts(
   };
 }
 
-async function getDraft(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function getDraft(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   const draft = await getDraftResource(
     userId,
     normalizeMessageId(input.draftId),
@@ -574,64 +503,45 @@ async function getDraft(
   };
 }
 
-async function updateDraft(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function updateDraft(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   const draftId = normalizeMessageId(input.draftId);
   const existing = await getDraftResource(userId, draftId, accessToken, fetcher, "full");
   const headers = existing.message.payload?.headers ?? [];
   const nextRecipients = buildRecipients(input);
   const recipients = buildRecipients({
-    to:
-      nextRecipients.to.length > 0
-        ? nextRecipients.to
-        : parseAddressList(readHeader(headers, "To")),
-    cc:
-      nextRecipients.cc.length > 0
-        ? nextRecipients.cc
-        : parseAddressList(readHeader(headers, "Cc")),
-    bcc:
-      nextRecipients.bcc.length > 0
-        ? nextRecipients.bcc
-        : parseAddressList(readHeader(headers, "Bcc")),
+    to: nextRecipients.to.length > 0 ? nextRecipients.to : parseAddressList(readHeader(headers, "To")),
+    cc: nextRecipients.cc.length > 0 ? nextRecipients.cc : parseAddressList(readHeader(headers, "Cc")),
+    bcc: nextRecipients.bcc.length > 0 ? nextRecipients.bcc : parseAddressList(readHeader(headers, "Bcc")),
   });
 
   const existingBody = extractBodyContent(existing.message.payload ?? null);
-  const subject = optionalString(input.subject) || readHeader(headers, "Subject");
+  const subject = trimmedString(input.subject) || readHeader(headers, "Subject");
   const body = Object.hasOwn(input, "body")
-    ? optionalString(input.body)
+    ? trimmedString(input.body)
     : Object.hasOwn(input, "messageBody")
-      ? optionalString(input.messageBody)
+      ? trimmedString(input.messageBody)
       : existingBody.body;
   const isHtml = typeof input.isHtml === "boolean" ? input.isHtml : existingBody.isHtml;
-  const threadId = optionalString(input.threadId) || existing.message.threadId;
+  const threadId = trimmedString(input.threadId) || existing.message.threadId;
 
-  const payload = await fetchJson<GmailDraftResource>(
-    gmailUserUrl(userId, "drafts", draftId),
-    accessToken,
-    fetcher,
-    {
-      method: "PUT",
-      body: JSON.stringify({
-        id: draftId,
-        message: {
-          raw: encodeMimeMessage({
-            to: recipients.to,
-            cc: recipients.cc,
-            bcc: recipients.bcc,
-            subject,
-            body,
-            isHtml,
-            from: optionalString(input.fromEmail) || firstAddress(readHeader(headers, "From")),
-          }),
-          ...(threadId ? { threadId: normalizeThreadId(threadId) } : {}),
-        },
-      }),
-    },
-  );
+  const payload = await fetchJson<GmailDraftResource>(gmailUserUrl(userId, "drafts", draftId), accessToken, fetcher, {
+    method: "PUT",
+    body: JSON.stringify({
+      id: draftId,
+      message: {
+        raw: encodeMimeMessage({
+          to: recipients.to,
+          cc: recipients.cc,
+          bcc: recipients.bcc,
+          subject,
+          body,
+          isHtml,
+          from: trimmedString(input.fromEmail) || firstAddress(readHeader(headers, "From")),
+        }),
+        threadId: threadId ? normalizeThreadId(threadId) : undefined,
+      },
+    }),
+  });
 
   return {
     draftId: payload.id,
@@ -640,12 +550,7 @@ async function updateDraft(
   };
 }
 
-async function sendDraft(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function sendDraft(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   const payload = await fetchJson<{ id: string; threadId?: string }>(
     gmailUserUrl(userId, "drafts", "send"),
     accessToken,
@@ -664,20 +569,10 @@ async function sendDraft(
   };
 }
 
-async function deleteDraft(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
-  await fetchEmpty(
-    gmailUserUrl(userId, "drafts", normalizeMessageId(input.draftId)),
-    accessToken,
-    fetcher,
-    {
-      method: "DELETE",
-    },
-  );
+async function deleteDraft(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
+  await fetchEmpty(gmailUserUrl(userId, "drafts", normalizeMessageId(input.draftId)), accessToken, fetcher, {
+    method: "DELETE",
+  });
 
   return { success: true };
 }
@@ -694,12 +589,7 @@ async function listLabels(userId: string, accessToken: string, fetcher: typeof f
   };
 }
 
-async function getLabel(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function getLabel(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   return fetchJson<Record<string, unknown>>(
     gmailUserUrl(userId, "labels", normalizeMessageId(input.labelId)),
     accessToken,
@@ -707,24 +597,14 @@ async function getLabel(
   );
 }
 
-async function createLabel(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function createLabel(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   return fetchJson<Record<string, unknown>>(gmailUserUrl(userId, "labels"), accessToken, fetcher, {
     method: "POST",
     body: JSON.stringify(buildLabelPayload(input)),
   });
 }
 
-async function patchLabel(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function patchLabel(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   return fetchJson<Record<string, unknown>>(
     gmailUserUrl(userId, "labels", normalizeMessageId(input.labelId)),
     accessToken,
@@ -736,12 +616,7 @@ async function patchLabel(
   );
 }
 
-async function updateLabel(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function updateLabel(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   return fetchJson<Record<string, unknown>>(
     gmailUserUrl(userId, "labels", normalizeMessageId(input.labelId)),
     accessToken,
@@ -753,20 +628,10 @@ async function updateLabel(
   );
 }
 
-async function deleteLabel(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
-  await fetchEmpty(
-    gmailUserUrl(userId, "labels", normalizeMessageId(input.labelId)),
-    accessToken,
-    fetcher,
-    {
-      method: "DELETE",
-    },
-  );
+async function deleteLabel(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
+  await fetchEmpty(gmailUserUrl(userId, "labels", normalizeMessageId(input.labelId)), accessToken, fetcher, {
+    method: "DELETE",
+  });
 
   return { success: true };
 }
@@ -898,12 +763,7 @@ async function untrashThread(
   return normalizeThread(thread);
 }
 
-async function listHistory(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listHistory(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   const url = new URL(gmailUserUrl(userId, "history"));
   url.searchParams.set("startHistoryId", normalizeMessageId(input.startHistoryId));
   if (input.pageToken != null) {
@@ -944,12 +804,7 @@ async function listFilters(userId: string, accessToken: string, fetcher: typeof 
   };
 }
 
-async function getFilter(
-  input: Record<string, unknown>,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function getFilter(input: Record<string, unknown>, userId: string, accessToken: string, fetcher: typeof fetch) {
   return fetchJson<Record<string, unknown>>(
     gmailUserUrl(userId, "settings", "filters", normalizeMessageId(input.filterId)),
     accessToken,
@@ -963,18 +818,13 @@ async function createFilter(
   accessToken: string,
   fetcher: typeof fetch,
 ) {
-  return fetchJson<Record<string, unknown>>(
-    gmailUserUrl(userId, "settings", "filters"),
-    accessToken,
-    fetcher,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        criteria: asObject(input.criteria),
-        action: asObject(input.action),
-      }),
-    },
-  );
+  return fetchJson<Record<string, unknown>>(gmailUserUrl(userId, "settings", "filters"), accessToken, fetcher, {
+    method: "POST",
+    body: JSON.stringify({
+      criteria: asObject(input.criteria),
+      action: asObject(input.action),
+    }),
+  });
 }
 
 async function deleteFilter(
@@ -995,17 +845,8 @@ async function deleteFilter(
   return { success: true };
 }
 
-async function getSettingsResource(
-  resource: string,
-  userId: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
-  return fetchJson<Record<string, unknown>>(
-    gmailUserUrl(userId, "settings", resource),
-    accessToken,
-    fetcher,
-  );
+async function getSettingsResource(resource: string, userId: string, accessToken: string, fetcher: typeof fetch) {
+  return fetchJson<Record<string, unknown>>(gmailUserUrl(userId, "settings", resource), accessToken, fetcher);
 }
 
 async function updateSettingsResource(
@@ -1019,24 +860,15 @@ async function updateSettingsResource(
     Object.entries(input).filter(([key, value]) => key !== "userId" && value !== undefined),
   );
 
-  return fetchJson<Record<string, unknown>>(
-    gmailUserUrl(userId, "settings", resource),
-    accessToken,
-    fetcher,
-    {
-      method: "PUT",
-      body: JSON.stringify(body),
-    },
-  );
+  return fetchJson<Record<string, unknown>>(gmailUserUrl(userId, "settings", resource), accessToken, fetcher, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }
 
 async function listForwardingAddresses(userId: string, accessToken: string, fetcher: typeof fetch) {
   const payload = normalizeNullableObjectResponse(
-    await fetchJson<unknown>(
-      gmailUserUrl(userId, "settings", "forwardingAddresses"),
-      accessToken,
-      fetcher,
-    ),
+    await fetchJson<unknown>(gmailUserUrl(userId, "settings", "forwardingAddresses"), accessToken, fetcher),
     "gmail forwarding addresses list",
   );
   const forwardingAddresses = payload.forwardingAddresses;
@@ -1106,18 +938,13 @@ async function sendThreadMessage(
   threadId: string,
   raw: string,
 ) {
-  return fetchJson<{ id: string; threadId?: string }>(
-    gmailUserUrl(userId, "messages", "send"),
-    accessToken,
-    fetcher,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        threadId,
-        raw,
-      }),
-    },
-  );
+  return fetchJson<{ id: string; threadId?: string }>(gmailUserUrl(userId, "messages", "send"), accessToken, fetcher, {
+    method: "POST",
+    body: JSON.stringify({
+      threadId,
+      raw,
+    }),
+  });
 }
 
 function gmailUserUrl(userId: string, ...segments: string[]) {
@@ -1148,9 +975,7 @@ async function hydrateInBatches<T, TResult>(
 
 function buildLabelPayload(input: Record<string, unknown>) {
   return Object.fromEntries(
-    Object.entries(input).filter(
-      ([key, value]) => key !== "userId" && key !== "labelId" && value !== undefined,
-    ),
+    Object.entries(input).filter(([key, value]) => key !== "userId" && key !== "labelId" && value !== undefined),
   );
 }
 
@@ -1162,9 +987,7 @@ function buildLabelMutationPayload(input: Record<string, unknown>) {
 }
 
 function asObject(value: unknown) {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function normalizeNullableObjectResponse(value: unknown, operation: string) {
@@ -1178,43 +1001,32 @@ function normalizeNullableObjectResponse(value: unknown, operation: string) {
   throw new ProviderRequestError(502, `${operation} response must be an object`);
 }
 
-async function fetchJson<T>(
-  url: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-  init: RequestInit = {},
-) {
+async function fetchJson<T>(url: string, accessToken: string, fetcher: typeof fetch, init: RequestInit = {}) {
   const requestInit = buildGmailRequestInit(accessToken, init);
   const response = await fetcher(url, requestInit);
   await assertGmailResponse(response);
   return (await response.json()) as T;
 }
 
-async function fetchEmpty(
-  url: string,
-  accessToken: string,
-  fetcher: typeof fetch,
-  init: RequestInit = {},
-) {
+async function fetchEmpty(url: string, accessToken: string, fetcher: typeof fetch, init: RequestInit = {}) {
   const requestInit = buildGmailRequestInit(accessToken, init);
   const response = await fetcher(url, requestInit);
   await assertGmailResponse(response);
 }
 
 function buildGmailRequestInit(accessToken: string, init: RequestInit) {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${accessToken}`,
+  };
+  if (init.body) {
+    headers["content-type"] = "application/json";
+  }
+  Object.assign(headers, init.headers);
+
   return {
     ...init,
-    headers: {
-      authorization: `Bearer ${accessToken}`,
-      ...(init.body ? { "content-type": "application/json" } : {}),
-      ...(init.headers as Record<string, string> | undefined),
-    },
+    headers,
   };
-}
-
-function resolveUserId(value: unknown) {
-  const userId = String(value ?? "me").trim();
-  return userId || "me";
 }
 
 function normalizeFormat(value: unknown, fallback: string) {
@@ -1223,12 +1035,10 @@ function normalizeFormat(value: unknown, fallback: string) {
 }
 
 function normalizeOptionalPositiveInteger(value: unknown) {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 500
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 500 ? value : undefined;
 }
 
-function optionalString(value: unknown) {
+function trimmedString(value: unknown) {
   const stringValue = String(value ?? "").trim();
   return stringValue || "";
 }

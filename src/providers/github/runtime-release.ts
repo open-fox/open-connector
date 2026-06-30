@@ -1,10 +1,6 @@
 import type { GitHubActionHandler } from "./runtime-shared.ts";
 
-import {
-  optionalBoolean,
-  optionalInteger,
-  optionalText as optionalString,
-} from "../../core/cast.ts";
+import { optionalBoolean, optionalInteger, optionalRawString, optionalString } from "../../core/cast.ts";
 import { compactObject, githubRequestJson } from "./runtime-shared.ts";
 
 export const releaseActionHandlers: Record<string, GitHubActionHandler> = {
@@ -19,8 +15,8 @@ export const releaseActionHandlers: Record<string, GitHubActionHandler> = {
       body: compactObject({
         tag_name: String(input.tagName),
         target_commitish: optionalString(input.targetCommitish),
-        name: optionalString(input.name),
-        body: optionalString(input.body),
+        name: optionalRawString(input.name),
+        body: optionalRawString(input.body),
         draft: optionalBoolean(input.draft),
         prerelease: optionalBoolean(input.prerelease),
         generate_release_notes: optionalBoolean(input.generateReleaseNotes),
@@ -60,11 +56,7 @@ export const releaseActionHandlers: Record<string, GitHubActionHandler> = {
   },
 };
 
-async function listReleases(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listReleases(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const releases = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/releases`,
     query: compactObject({
@@ -78,11 +70,7 @@ async function listReleases(
   return { releases };
 }
 
-async function listReleaseAssets(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listReleaseAssets(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const assets = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/releases/${String(input.releaseId)}/assets`,
     query: compactObject({

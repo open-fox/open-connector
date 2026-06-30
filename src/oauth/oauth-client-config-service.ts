@@ -112,10 +112,7 @@ export class OAuthClientConfigService {
 
     const auth = provider.auth.find((auth) => auth.type === "oauth2");
     if (!auth || auth.type !== "oauth2") {
-      throw new OAuthClientConfigError(
-        "unsupported_auth_type",
-        `${service} does not support oauth2.`,
-      );
+      throw new OAuthClientConfigError("unsupported_auth_type", `${service} does not support oauth2.`);
     }
 
     return auth;

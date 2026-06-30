@@ -1,10 +1,35 @@
-# Credentials
+# Credentials And Local Storage
 
-The bootstrap runtime keeps local connections and OAuth client configuration in memory.
+The local runtime stores connections, OAuth client configuration, pending OAuth states, and recent
+run logs in SQLite.
+
+By default the database lives at:
+
+```text
+./data/connect.sqlite
+```
+
+Set `OOMOL_CONNECT_DATA_DIR` to use another directory. The Docker image defaults this to
+`/app/data`, which is intended to be mounted as a volume.
 
 - `no_auth` providers are available as virtual connections and do not store secrets.
-- `api_key` and `custom_credential` providers store their local secrets in the in-memory connection store.
+- `api_key` and `custom_credential` providers store their local secrets in SQLite.
 - `oauth2` providers use user-provided OAuth client configuration and a localhost callback URL.
+
+## Encryption
+
+Set `OOMOL_CONNECT_ENCRYPTION_KEY` to encrypt stored credentials and OAuth client secrets:
+
+```bash
+OOMOL_CONNECT_ENCRYPTION_KEY="replace-with-a-long-random-secret" npm run dev
+```
+
+The runtime uses AES-256-GCM for records that contain provider credentials or OAuth client
+configuration. The key is not stored by OOMOL Connect; if it is lost, encrypted records cannot be
+recovered.
+
+Without `OOMOL_CONNECT_ENCRYPTION_KEY`, the runtime stays usable for local development and prints a
+startup warning. In that mode, treat `connect.sqlite` as a sensitive local file.
 
 ## Credential fields
 
@@ -65,4 +90,54 @@ curl -s -X POST http://localhost:3000/api/connections/example/oauth/start
 
 Open the returned `authorizationUrl` in a browser and finish the provider callback.
 
-Persistent local storage and optional encryption are later work.
+Protect the local SQLite database like any other file containing API keys or OAuth tokens.
+
+## OAuth Token Refresh
+
+OAuth access tokens are refreshed automatically when they are expired and the provider issued a
+refresh token. Refreshed credentials are written back to the local SQLite store, using encryption
+when `OOMOL_CONNECT_ENCRYPTION_KEY` is configured.
+
+If a token is expired and no refresh token is available, reconnect the provider from the local
+runtime. Providers such as Google may require authorization parameters that request offline access;
+provider definitions should include those parameters when refresh tokens are expected.
+
+## Local API Access
+
+The server binds to `127.0.0.1` by default. Set `HOST=0.0.0.0` only when the runtime must be
+reachable from outside the local machine or container.
+
+Set `OOMOL_CONNECT_API_TOKEN` to require bearer-token authentication for API and MCP requests:
+
+```bash
+OOMOL_CONNECT_API_TOKEN="replace-with-a-local-token" npm run dev
+```
+
+Then external clients should send:
+
+```text
+Authorization: Bearer replace-with-a-local-token
+```
+
+The bundled web console receives a same-site local cookie from the runtime so it can keep working
+when API-token authentication is enabled.
+
+## Action Policy
+
+Use `OOMOL_CONNECT_ALLOWED_ACTIONS` to expose only selected actions to HTTP and MCP execution:
+
+```bash
+OOMOL_CONNECT_ALLOWED_ACTIONS="hackernews.*,github.get_authenticated_user" npm run dev
+```
+
+Use `OOMOL_CONNECT_BLOCKED_ACTIONS` to deny specific actions even when a broader allowlist includes
+them:
+
+```bash
+OOMOL_CONNECT_ALLOWED_ACTIONS="github.*" \
+OOMOL_CONNECT_BLOCKED_ACTIONS="github.delete_repository" \
+npm run dev
+```
+
+Entries are comma-separated action ids. A provider-wide wildcard such as `gmail.*` matches all
+actions for that provider.

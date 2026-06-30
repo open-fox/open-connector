@@ -1,3 +1,4 @@
+import { useClipboard } from "foxact/use-clipboard";
 import {
   Activity,
   AppWindow,
@@ -38,7 +39,7 @@ type AuthDefinition =
       clientConfigFields?: CredentialField[];
     };
 
-type CredentialField = {
+interface CredentialField {
   key: string;
   label: string;
   inputType: "text" | "password" | "textarea" | "json";
@@ -46,11 +47,11 @@ type CredentialField = {
   secret: boolean;
   placeholder?: string;
   description?: string;
-};
+}
 
 type JsonSchema = Record<string, unknown>;
 
-type ActionDefinition = {
+interface ActionDefinition {
   id: string;
   service: string;
   name: string;
@@ -58,9 +59,16 @@ type ActionDefinition = {
   requiredScopes: string[];
   inputSchema: JsonSchema;
   outputSchema: JsonSchema;
-};
+  execution: {
+    locallyExecutable: boolean;
+    catalogOnly: boolean;
+    requiredAuthTypes: string[];
+    noAuthRunnable: boolean;
+    needsCredential: boolean;
+  };
+}
 
-type ProviderDefinition = {
+interface ProviderDefinition {
   service: string;
   displayName: string;
   categories: string[];
@@ -68,29 +76,34 @@ type ProviderDefinition = {
   auth: AuthDefinition[];
   homepageUrl?: string;
   actions: ActionDefinition[];
-};
+}
 
-type ConnectionRecord = {
+interface ConnectionRecord {
   service: string;
   authType: string;
   metadata: Record<string, unknown>;
-};
+}
 
-type OAuthConfig = {
+interface OAuthConfig {
   service: string;
   clientId: string;
   extra: Record<string, string>;
-};
+}
 
-type RunLog = {
+interface RunLog {
   id: string;
   actionId: string;
+  caller: "http" | "mcp" | "web";
   startedAt: string;
   completedAt: string;
+  durationMs: number;
   ok: boolean;
-};
+  inputSummary?: unknown;
+  errorCode?: string;
+  errorMessage?: string;
+}
 
-type ExecutionResult = {
+interface ExecutionResult {
   ok: boolean;
   output?: unknown;
   error?: {
@@ -98,14 +111,64 @@ type ExecutionResult = {
     message: string;
     details?: unknown;
   };
-};
+}
 
-type AppData = {
+interface AppData {
   providers: ProviderDefinition[];
   connections: ConnectionRecord[];
   oauthConfigs: OAuthConfig[];
   runs: RunLog[];
-};
+}
+
+interface AppsViewProps {
+  providers: ProviderDefinition[];
+  connectionsByService: Map<string, ConnectionRecord>;
+  oauthConfigServices: Set<string>;
+  selectedService?: string;
+  onSelect(service: string): void;
+  onRefresh(): void;
+}
+
+interface ProviderDetailProps {
+  provider: ProviderDefinition;
+  connection?: ConnectionRecord;
+  hasOAuthConfig: boolean;
+  onRefresh(): void;
+}
+
+interface ConnectionFormProps {
+  provider: ProviderDefinition;
+  auth: AuthDefinition;
+  onRefresh(): void;
+}
+
+interface OAuthConfigFormProps {
+  provider: ProviderDefinition;
+  hasConfig: boolean;
+  onRefresh(): void;
+}
+
+interface ActionsViewProps {
+  providers: ProviderDefinition[];
+  actions: ActionDefinition[];
+  selectedService: string | null;
+  selectedAction?: ActionDefinition;
+  onSelectService(service: string | null): void;
+  onSelectAction(actionId: string): void;
+  onRefresh(): void;
+}
+
+interface DocCardProps {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  href: string;
+}
+
+interface ExampleTabsProps {
+  action: ActionDefinition;
+  examples: { curl: string; typescript: string };
+}
 
 const emptyData: AppData = {
   providers: [],
@@ -151,8 +214,7 @@ export function App(): ReactNode {
         }
       })
       .catch((caught: unknown) => {
-        if (!cancelled)
-          setError(caught instanceof Error ? caught.message : "Failed to load runtime data.");
+        if (!cancelled) setError(caught instanceof Error ? caught.message : "Failed to load runtime data.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -171,16 +233,10 @@ export function App(): ReactNode {
     () => new Set(data.oauthConfigs.map((config) => config.service)),
     [data.oauthConfigs],
   );
-  const actions = useMemo(
-    () => data.providers.flatMap((provider) => provider.actions),
-    [data.providers],
-  );
-  const selectedProvider =
-    data.providers.find((provider) => provider.service === selectedService) ?? data.providers[0];
+  const actions = useMemo(() => data.providers.flatMap((provider) => provider.actions), [data.providers]);
+  const selectedProvider = data.providers.find((provider) => provider.service === selectedService) ?? data.providers[0];
   const selectedAction =
-    actions.find((action) => action.id === selectedActionId) ??
-    selectedProvider?.actions[0] ??
-    actions[0];
+    actions.find((action) => action.id === selectedActionId) ?? selectedProvider?.actions[0] ?? actions[0];
   const filteredProviders = filterProviders(data.providers, query);
   const filteredActions = filterActions(actions, query, selectedService);
 
@@ -258,8 +314,7 @@ export function App(): ReactNode {
             onSelect={(service) => {
               setSelectedService(service);
               setSelectedActionId(
-                data.providers.find((provider) => provider.service === service)?.actions[0]?.id ??
-                  null,
+                data.providers.find((provider) => provider.service === service)?.actions[0]?.id ?? null,
               );
             }}
             onRefresh={refresh}
@@ -286,17 +341,9 @@ export function App(): ReactNode {
   );
 }
 
-function AppsView(props: {
-  providers: ProviderDefinition[];
-  connectionsByService: Map<string, ConnectionRecord>;
-  oauthConfigServices: Set<string>;
-  selectedService?: string;
-  onSelect(service: string): void;
-  onRefresh(): void;
-}): ReactNode {
+function AppsView(props: AppsViewProps): ReactNode {
   const selectedProvider =
-    props.providers.find((provider) => provider.service === props.selectedService) ??
-    props.providers[0];
+    props.providers.find((provider) => provider.service === props.selectedService) ?? props.providers[0];
 
   return (
     <div className="split-view">
@@ -306,11 +353,7 @@ function AppsView(props: {
           return (
             <button
               key={provider.service}
-              className={
-                selectedProvider?.service === provider.service
-                  ? "provider-row active"
-                  : "provider-row"
-              }
+              className={selectedProvider?.service === provider.service ? "provider-row active" : "provider-row"}
               onClick={() => props.onSelect(provider.service)}
             >
               <ProviderIcon provider={provider} />
@@ -340,14 +383,8 @@ function AppsView(props: {
   );
 }
 
-function ProviderDetail(props: {
-  provider: ProviderDefinition;
-  connection?: ConnectionRecord;
-  hasOAuthConfig: boolean;
-  onRefresh(): void;
-}): ReactNode {
-  const preferredAuth =
-    props.provider.auth.find((auth) => auth.type === "api_key") ?? props.provider.auth[0];
+function ProviderDetail(props: ProviderDetailProps): ReactNode {
+  const preferredAuth = props.provider.auth.find((auth) => auth.type === "api_key") ?? props.provider.auth[0];
   const oauthAuth = props.provider.auth.find((auth) => auth.type === "oauth2");
 
   return (
@@ -367,16 +404,8 @@ function ProviderDetail(props: {
       </div>
 
       <div className="section-grid">
-        <InfoBlock
-          icon={<PlugZap size={18} />}
-          label="Actions"
-          value={String(props.provider.actions.length)}
-        />
-        <InfoBlock
-          icon={<ShieldCheck size={18} />}
-          label="Auth"
-          value={props.provider.authTypes.join(", ")}
-        />
+        <InfoBlock icon={<PlugZap size={18} />} label="Actions" value={String(props.provider.actions.length)} />
+        <InfoBlock icon={<ShieldCheck size={18} />} label="Auth" value={props.provider.authTypes.join(", ")} />
         <InfoBlock
           icon={<KeyRound size={18} />}
           label="OAuth config"
@@ -387,27 +416,16 @@ function ProviderDetail(props: {
       <div className="panel-section">
         <h3>Connection</h3>
         {preferredAuth ? (
-          <ConnectionForm
-            provider={props.provider}
-            auth={preferredAuth}
-            onRefresh={props.onRefresh}
-          />
+          <ConnectionForm provider={props.provider} auth={preferredAuth} onRefresh={props.onRefresh} />
         ) : (
-          <EmptyState
-            title="No connection method"
-            description="This provider does not need local credentials."
-          />
+          <EmptyState title="No connection method" description="This provider does not need local credentials." />
         )}
       </div>
 
       {oauthAuth ? (
         <div className="panel-section">
           <h3>OAuth Client</h3>
-          <OAuthConfigForm
-            provider={props.provider}
-            hasConfig={props.hasOAuthConfig}
-            onRefresh={props.onRefresh}
-          />
+          <OAuthConfigForm provider={props.provider} hasConfig={props.hasOAuthConfig} onRefresh={props.onRefresh} />
         </div>
       ) : null}
 
@@ -422,11 +440,7 @@ function ProviderDetail(props: {
   );
 }
 
-function ConnectionForm(props: {
-  provider: ProviderDefinition;
-  auth: AuthDefinition;
-  onRefresh(): void;
-}): ReactNode {
+function ConnectionForm(props: ConnectionFormProps): ReactNode {
   const [values, setValues] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<string | null>(null);
   const fields = credentialFieldsFor(props.auth);
@@ -474,9 +488,7 @@ function ConnectionForm(props: {
             type={field.secret ? "password" : "text"}
             placeholder={field.placeholder}
             value={values[field.key] ?? ""}
-            onChange={(event) =>
-              setValues((current) => ({ ...current, [field.key]: event.target.value }))
-            }
+            onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))}
           />
           {field.description ? <small>{field.description}</small> : null}
         </label>
@@ -496,11 +508,7 @@ function ConnectionForm(props: {
   );
 }
 
-function OAuthConfigForm(props: {
-  provider: ProviderDefinition;
-  hasConfig: boolean;
-  onRefresh(): void;
-}): ReactNode {
+function OAuthConfigForm(props: OAuthConfigFormProps): ReactNode {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -529,11 +537,7 @@ function OAuthConfigForm(props: {
       </label>
       <label className="field">
         <span>Client Secret</span>
-        <input
-          type="password"
-          value={clientSecret}
-          onChange={(event) => setClientSecret(event.target.value)}
-        />
+        <input type="password" value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} />
       </label>
       <div className="button-row">
         <button className="primary-button" type="submit">
@@ -546,15 +550,7 @@ function OAuthConfigForm(props: {
   );
 }
 
-function ActionsView(props: {
-  providers: ProviderDefinition[];
-  actions: ActionDefinition[];
-  selectedService: string | null;
-  selectedAction?: ActionDefinition;
-  onSelectService(service: string | null): void;
-  onSelectAction(actionId: string): void;
-  onRefresh(): void;
-}): ReactNode {
+function ActionsView(props: ActionsViewProps): ReactNode {
   return (
     <div className="split-view actions-layout">
       <section className="list-panel">
@@ -583,7 +579,9 @@ function ActionsView(props: {
           >
             <span>
               <strong>{action.name}</strong>
-              <small>{action.service}</small>
+              <small>
+                {action.service} · {action.execution.locallyExecutable ? "Executable" : "Catalog only"}
+              </small>
             </span>
             <ChevronRight size={16} />
           </button>
@@ -593,10 +591,7 @@ function ActionsView(props: {
         {props.selectedAction ? (
           <ActionDetail action={props.selectedAction} />
         ) : (
-          <EmptyState
-            title="No action selected"
-            description="Select an action to inspect and run it."
-          />
+          <EmptyState title="No action selected" description="Select an action to inspect and run it." />
         )}
       </section>
     </div>
@@ -620,7 +615,17 @@ function ActionDetail(props: { action: ActionDefinition }): ReactNode {
       </div>
       <p className="detail-description">{props.action.description}</p>
       <div className="button-row">
-        <button className="primary-button" onClick={() => setDebugOpen(true)}>
+        <Badge tone={props.action.execution.locallyExecutable ? "success" : undefined}>
+          {props.action.execution.locallyExecutable ? "Locally executable" : "Catalog only"}
+        </Badge>
+        <Badge>{props.action.execution.noAuthRunnable ? "No auth" : "Needs credential"}</Badge>
+      </div>
+      <div className="button-row">
+        <button
+          className="primary-button"
+          disabled={!props.action.execution.locallyExecutable}
+          onClick={() => setDebugOpen(true)}
+        >
           <Play size={16} />
           Debug Action
         </button>
@@ -640,21 +645,14 @@ function ActionDetail(props: { action: ActionDefinition }): ReactNode {
       </div>
       <ParameterList schema={props.action.inputSchema} />
       <ExampleTabs action={props.action} examples={examples} />
-      {debugOpen ? (
-        <RunActionModal action={props.action} onClose={() => setDebugOpen(false)} />
-      ) : null}
+      {debugOpen ? <RunActionModal action={props.action} onClose={() => setDebugOpen(false)} /> : null}
     </>
   );
 }
 
 function RunsView(props: { runs: RunLog[] }): ReactNode {
   if (props.runs.length === 0) {
-    return (
-      <EmptyState
-        title="No runs yet"
-        description="Run an action to see recent execution history."
-      />
-    );
+    return <EmptyState title="No runs yet" description="Run an action to see recent execution history." />;
   }
 
   return (
@@ -663,24 +661,24 @@ function RunsView(props: { runs: RunLog[] }): ReactNode {
         <thead>
           <tr>
             <th>Action</th>
+            <th>Caller</th>
             <th>Status</th>
             <th>Started</th>
             <th>Duration</th>
+            <th>Input</th>
+            <th>Error</th>
           </tr>
         </thead>
         <tbody>
           {props.runs.map((run) => (
             <tr key={run.id}>
               <td className="mono">{run.actionId}</td>
-              <td>
-                {run.ok ? (
-                  <Badge tone="success">Success</Badge>
-                ) : (
-                  <Badge tone="error">Failed</Badge>
-                )}
-              </td>
+              <td className="mono">{run.caller}</td>
+              <td>{run.ok ? <Badge tone="success">Success</Badge> : <Badge tone="error">Failed</Badge>}</td>
               <td>{formatDate(run.startedAt)}</td>
-              <td>{duration(run.startedAt, run.completedAt)}</td>
+              <td>{formatDuration(run)}</td>
+              <td className="mono">{compactJson(run.inputSummary)}</td>
+              <td>{run.errorMessage ?? run.errorCode ?? ""}</td>
             </tr>
           ))}
         </tbody>
@@ -714,12 +712,7 @@ function DocsView(props: { actions: ActionDefinition[] }): ReactNode {
   );
 }
 
-function DocCard(props: {
-  icon: ReactNode;
-  title: string;
-  description: string;
-  href: string;
-}): ReactNode {
+function DocCard(props: DocCardProps): ReactNode {
   return (
     <a className="doc-card" href={props.href} target="_blank" rel="noreferrer">
       <span className="doc-icon">{props.icon}</span>
@@ -760,11 +753,9 @@ function ParameterList(props: { schema: JsonSchema }): ReactNode {
   );
 }
 
-function ExampleTabs(props: {
-  action: ActionDefinition;
-  examples: { curl: string; typescript: string };
-}): ReactNode {
+function ExampleTabs(props: ExampleTabsProps): ReactNode {
   const [active, setActive] = useState<"curl" | "typescript" | "agent">("curl");
+  const { copy, copied } = useClipboard();
   const agent = buildAgentPrompt(props.action);
   const tabs = [
     { id: "curl", label: "cURL", code: props.examples.curl },
@@ -772,10 +763,6 @@ function ExampleTabs(props: {
     { id: "agent", label: "Agent.md", code: agent.prompt },
   ] as const;
   const selected = tabs.find((tab) => tab.id === active) ?? tabs[0];
-
-  async function copy(): Promise<void> {
-    await navigator.clipboard.writeText(selected.code);
-  }
 
   return (
     <section className="example-card">
@@ -807,10 +794,10 @@ function ExampleTabs(props: {
           ) : null}
           <button
             className="icon-button subtle"
-            onClick={() => void copy()}
-            aria-label={`Copy ${selected.label}`}
+            onClick={() => void copy(selected.code)}
+            aria-label={copied ? `Copied ${selected.label}` : `Copy ${selected.label}`}
           >
-            <Copy size={15} />
+            {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
         </div>
       </div>
@@ -854,22 +841,13 @@ function RunActionModal(props: { action: ActionDefinition; onClose(): void }): R
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section
-        className="modal-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="run-action-title"
-      >
+      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="run-action-title">
         <div className="modal-header">
           <div>
             <h3 id="run-action-title">Debug Action</h3>
             <p>{props.action.id}</p>
           </div>
-          <button
-            className="icon-button subtle"
-            onClick={props.onClose}
-            aria-label="Close debug action"
-          >
+          <button className="icon-button subtle" onClick={props.onClose} aria-label="Close debug action">
             <X size={16} />
           </button>
         </div>
@@ -906,9 +884,7 @@ function ResultPanel(props: { actionId: string; result: ExecutionResult }): Reac
   return (
     <div className={props.result.ok ? "result-panel ok" : "result-panel error"}>
       <div className="result-header">
-        <Badge tone={props.result.ok ? "success" : "error"}>
-          {props.result.ok ? "Success" : "Failed"}
-        </Badge>
+        <Badge tone={props.result.ok ? "success" : "error"}>{props.result.ok ? "Success" : "Failed"}</Badge>
         <span>{props.actionId}</span>
       </div>
       <pre className="result-box">{JSON.stringify(props.result, null, 2)}</pre>
@@ -1034,23 +1010,14 @@ function filterProviders(providers: ProviderDefinition[], query: string): Provid
   const normalized = query.trim().toLowerCase();
   if (!normalized) return providers;
   return providers.filter((provider) =>
-    [
-      provider.displayName,
-      provider.service,
-      provider.categories.join(" "),
-      provider.authTypes.join(" "),
-    ]
+    [provider.displayName, provider.service, provider.categories.join(" "), provider.authTypes.join(" ")]
       .join(" ")
       .toLowerCase()
       .includes(normalized),
   );
 }
 
-function filterActions(
-  actions: ActionDefinition[],
-  query: string,
-  service: string | null,
-): ActionDefinition[] {
+function filterActions(actions: ActionDefinition[], query: string, service: string | null): ActionDefinition[] {
   const normalized = query.trim().toLowerCase();
   return actions.filter((action) => {
     if (service && action.service !== service) return false;
@@ -1099,8 +1066,7 @@ function readRequired(schema: JsonSchema): string[] {
 function describeSchemaType(schema: JsonSchema | undefined): string {
   if (!schema) return "unknown";
   if (schema.const !== undefined) return JSON.stringify(schema.const);
-  if (Array.isArray(schema.enum))
-    return schema.enum.map((value) => JSON.stringify(value)).join(" | ");
+  if (Array.isArray(schema.enum)) return schema.enum.map((value) => JSON.stringify(value)).join(" | ");
   if (Array.isArray(schema.anyOf))
     return schema.anyOf.map((value) => describeSchemaType(value as JsonSchema)).join(" | ");
   return typeof schema.type === "string" ? schema.type : "unknown";
@@ -1146,9 +1112,21 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-function duration(start: string, end: string): string {
-  const ms = Math.max(0, new Date(end).getTime() - new Date(start).getTime());
+function formatDuration(run: RunLog): string {
+  const ms =
+    typeof run.durationMs === "number"
+      ? run.durationMs
+      : Math.max(0, new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime());
   return `${ms} ms`;
+}
+
+function compactJson(value: unknown): string {
+  if (value == null) {
+    return "";
+  }
+
+  const text = JSON.stringify(value);
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
 
 async function apiGet<T>(path: string): Promise<T> {

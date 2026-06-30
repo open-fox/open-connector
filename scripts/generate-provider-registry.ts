@@ -7,6 +7,16 @@ const services = entries
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
   .sort((a, b) => a.localeCompare(b));
+const executableActionIds = new Map<string, string[]>(
+  await Promise.all(
+    services.map(async (service): Promise<[string, string[]]> => {
+      const module = (await import(`../src/providers/${service}/executors.ts`)) as {
+        executors?: Record<string, unknown>;
+      };
+      return [service, Object.keys(module.executors ?? {}).sort((a, b) => a.localeCompare(b))];
+    }),
+  ),
+);
 
 function propertyName(service: string): string {
   return /^[A-Za-z_$][\w$]*$/.test(service) ? service : JSON.stringify(service);
@@ -24,9 +34,17 @@ const lines = [
   "/** Generated lazy imports for provider executors. Do not hand-edit. */",
   "export const executorModules: Record<string, () => Promise<ExecutorModule>> = {",
   ...services.map(
-    (service) =>
-      `  ${propertyName(service)}: (): Promise<ExecutorModule> => import("./${service}/executors.ts"),`,
+    (service) => `  ${propertyName(service)}: (): Promise<ExecutorModule> => import("./${service}/executors.ts"),`,
   ),
+  "};",
+  "",
+  "/** Generated local executable action ids by provider. Do not hand-edit. */",
+  "export const executableActionIds: Record<string, string[]> = {",
+  ...services.flatMap((service) => [
+    `  ${propertyName(service)}: [`,
+    ...(executableActionIds.get(service) ?? []).map((actionId) => `    ${JSON.stringify(actionId)},`),
+    "  ],",
+  ]),
   "};",
 ];
 

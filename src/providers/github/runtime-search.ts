@@ -1,6 +1,6 @@
 import type { GitHubActionHandler } from "./runtime-shared.ts";
 
-import { optionalInteger, optionalText as optionalString } from "../../core/cast.ts";
+import { optionalInteger, optionalString } from "../../core/cast.ts";
 import { compactObject, githubRequestJson } from "./runtime-shared.ts";
 
 export const searchActionHandlers: Record<string, GitHubActionHandler> = {
@@ -29,11 +29,7 @@ export const searchActionHandlers: Record<string, GitHubActionHandler> = {
   },
 };
 
-async function searchRepositories(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function searchRepositories(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: "/search/repositories",
     query: compactObject({
@@ -50,17 +46,11 @@ async function searchRepositories(
   return {
     total_count: Number(response.total_count ?? 0),
     incomplete_results: Boolean(response.incomplete_results),
-    repositories: Array.isArray(response.items)
-      ? (response.items as Record<string, unknown>[])
-      : [],
+    repositories: Array.isArray(response.items) ? (response.items as Record<string, unknown>[]) : [],
   };
 }
 
-async function searchUsers(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function searchUsers(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: "/search/users",
     query: compactObject({
@@ -81,11 +71,7 @@ async function searchUsers(
   };
 }
 
-async function searchCommits(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function searchCommits(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: "/search/commits",
     query: compactObject({
@@ -106,11 +92,7 @@ async function searchCommits(
   };
 }
 
-async function searchCode(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function searchCode(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: "/search/code",
     query: compactObject({
@@ -131,11 +113,7 @@ async function searchCode(
   };
 }
 
-async function searchLabels(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function searchLabels(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: "/search/labels",
     query: compactObject({
@@ -157,11 +135,7 @@ async function searchLabels(
   };
 }
 
-async function searchTopics(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function searchTopics(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: "/search/topics",
     query: compactObject({

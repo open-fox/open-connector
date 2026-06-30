@@ -33,11 +33,7 @@ export function renderActionMarkdown(action: ActionDefinition): string {
     "## Input Parameters",
     "",
     parameterRows.length > 0
-      ? [
-          "| Name | Required | Type | Description |",
-          "| --- | --- | --- | --- |",
-          ...parameterRows,
-        ].join("\n")
+      ? ["| Name | Required | Type | Description |", "| --- | --- | --- | --- |", ...parameterRows].join("\n")
       : "This action does not require input parameters.",
     "",
     "## Required Scopes",
@@ -92,11 +88,7 @@ function describeType(schema: JsonSchema | undefined): string {
   if (!schema) {
     return "unknown";
   }
-  if (
-    typeof schema.const === "string" ||
-    typeof schema.const === "number" ||
-    typeof schema.const === "boolean"
-  ) {
+  if (typeof schema.const === "string" || typeof schema.const === "number" || typeof schema.const === "boolean") {
     return JSON.stringify(schema.const);
   }
   if (Array.isArray(schema.enum)) {

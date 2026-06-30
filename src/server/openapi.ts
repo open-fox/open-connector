@@ -105,9 +105,7 @@ export function createOpenApiDocument(
   options: OpenApiDocumentOptions = {},
 ): OpenApiDocument {
   const actions = providers.flatMap((provider) => provider.actions);
-  const concreteAction = options.actionId
-    ? actions.find((action) => action.id === options.actionId)
-    : undefined;
+  const concreteAction = options.actionId ? actions.find((action) => action.id === options.actionId) : undefined;
   const paths: Record<string, unknown> = {
     "/health": getOperation("Runtime health check.", { ok: jsonSchema.boolean() }),
     "/api/apps": getOperation("List provider catalog entries.", {
@@ -170,7 +168,7 @@ export function createOpenApiDocument(
     paths,
     components: {
       schemas: {
-        ActionDefinition: jsonSchema.unknownObject("Public action catalog definition."),
+        ActionDefinition: jsonSchema.unknownObject("Public action catalog definition with runtime execution status."),
         ConnectionSummary: jsonSchema.object(
           {
             service: jsonSchema.string({ description: "Provider service identifier." }),
@@ -194,9 +192,7 @@ export function createOpenApiDocument(
             configured: jsonSchema.boolean({
               description: "Whether a local OAuth client config is configured.",
             }),
-            clientId: jsonSchema.nullable(
-              jsonSchema.string({ description: "Configured OAuth client id." }),
-            ),
+            clientId: jsonSchema.nullable(jsonSchema.string({ description: "Configured OAuth client id." })),
             expectedRedirectUri: jsonSchema.string({
               description: "Callback URL to configure in the provider OAuth app.",
             }),
@@ -213,12 +209,21 @@ export function createOpenApiDocument(
           {
             id: jsonSchema.string({ description: "Run identifier." }),
             actionId: jsonSchema.string({ description: "Executed action id." }),
+            caller: jsonSchema.string({
+              description: "Runtime entry point that executed the run.",
+            }),
             startedAt: jsonSchema.string({ description: "Start timestamp." }),
             completedAt: jsonSchema.string({ description: "Completion timestamp." }),
+            durationMs: jsonSchema.number({ description: "Run duration in milliseconds." }),
             ok: jsonSchema.boolean({ description: "Whether the run succeeded." }),
+            inputSummary: {
+              description: "Redacted action input summary.",
+            },
+            errorCode: jsonSchema.string({ description: "Error code when the run failed." }),
+            errorMessage: jsonSchema.string({ description: "Error message when the run failed." }),
           },
           {
-            required: ["id", "actionId", "startedAt", "completedAt", "ok"],
+            required: ["id", "actionId", "caller", "startedAt", "completedAt", "durationMs", "ok"],
             description: "Recent action run entry.",
           },
         ),

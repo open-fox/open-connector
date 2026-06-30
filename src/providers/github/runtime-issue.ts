@@ -1,10 +1,6 @@
 import type { GitHubActionHandler } from "./runtime-shared.ts";
 
-import {
-  nullableInteger,
-  optionalInteger,
-  optionalText as optionalString,
-} from "../../core/cast.ts";
+import { nullableInteger, optionalInteger, optionalRawString, optionalString } from "../../core/cast.ts";
 import {
   buildIssueAndPullRequestSearchQuery,
   compactObject,
@@ -23,7 +19,7 @@ export const issueActionHandlers: Record<string, GitHubActionHandler> = {
       path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues`,
       body: compactObject({
         title: String(input.title),
-        body: optionalString(input.body),
+        body: optionalRawString(input.body),
         assignees: Array.isArray(input.assignees) ? input.assignees.map(String) : undefined,
         labels: Array.isArray(input.labels) ? input.labels.map(String) : undefined,
         milestone: optionalInteger(input.milestone),
@@ -46,8 +42,8 @@ export const issueActionHandlers: Record<string, GitHubActionHandler> = {
       method: "PATCH",
       path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}`,
       body: compactObject({
-        title: optionalString(input.title),
-        body: optionalString(input.body),
+        title: optionalRawString(input.title),
+        body: optionalRawString(input.body),
         state: optionalString(input.state),
         assignees: Array.isArray(input.assignees) ? input.assignees.map(String) : undefined,
         labels: Array.isArray(input.labels) ? input.labels.map(String) : undefined,
@@ -69,7 +65,7 @@ export const issueActionHandlers: Record<string, GitHubActionHandler> = {
       body: compactObject({
         name: String(input.name),
         color: String(input.color),
-        description: optionalString(input.description),
+        description: optionalRawString(input.description),
       }),
       accessToken,
       fetcher,
@@ -161,11 +157,7 @@ export const issueActionHandlers: Record<string, GitHubActionHandler> = {
   },
 };
 
-async function listRepositoryIssues(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listRepositoryIssues(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const issues = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues`,
     query: compactObject({
@@ -186,11 +178,7 @@ async function listRepositoryIssues(
   };
 }
 
-async function listRepositoryLabels(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listRepositoryLabels(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const labels = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/labels`,
     query: compactObject({
@@ -204,11 +192,7 @@ async function listRepositoryLabels(
   return { labels };
 }
 
-async function listIssueLabels(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listIssueLabels(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const labels = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/labels`,
     query: compactObject({
@@ -222,11 +206,7 @@ async function listIssueLabels(
   return { labels };
 }
 
-async function addIssueLabels(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function addIssueLabels(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const labels = await githubRequestJson<Record<string, unknown>[]>({
     method: "POST",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/labels`,
@@ -240,11 +220,7 @@ async function addIssueLabels(
   return { labels };
 }
 
-async function setIssueLabels(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function setIssueLabels(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const labels = await githubRequestJson<Record<string, unknown>[]>({
     method: "PUT",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/labels`,
@@ -258,11 +234,7 @@ async function setIssueLabels(
   return { labels };
 }
 
-async function removeIssueLabel(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function removeIssueLabel(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const labels = await githubRequestJson<Record<string, unknown>[]>({
     method: "DELETE",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/labels/${encodeURIComponent(String(input.label))}`,
@@ -273,11 +245,7 @@ async function removeIssueLabel(
   return { labels };
 }
 
-async function clearIssueLabels(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function clearIssueLabels(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   await githubRequestNoContent({
     method: "DELETE",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/labels`,
@@ -288,11 +256,7 @@ async function clearIssueLabels(
   return { ok: true };
 }
 
-async function lockIssue(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function lockIssue(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   await githubRequestNoContent({
     method: "PUT",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/lock`,
@@ -306,11 +270,7 @@ async function lockIssue(
   return { locked: true as const };
 }
 
-async function unlockIssue(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function unlockIssue(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   await githubRequestNoContent({
     method: "DELETE",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/lock`,
@@ -321,11 +281,7 @@ async function unlockIssue(
   return { locked: false as const };
 }
 
-async function listIssueComments(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listIssueComments(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const comments = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/comments`,
     query: compactObject({
@@ -339,11 +295,7 @@ async function listIssueComments(
   return { comments };
 }
 
-async function searchIssuesAndPullRequests(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function searchIssuesAndPullRequests(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<Record<string, unknown>>({
     path: "/search/issues",
     query: compactObject({
@@ -364,11 +316,7 @@ async function searchIssuesAndPullRequests(
   };
 }
 
-async function listIssueTimelineEvents(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listIssueTimelineEvents(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const events = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/timeline`,
     query: compactObject({
@@ -382,11 +330,7 @@ async function listIssueTimelineEvents(
   return { events };
 }
 
-async function listIssueEvents(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listIssueEvents(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const events = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/${String(input.issueNumber)}/events`,
     query: compactObject({
@@ -400,11 +344,7 @@ async function listIssueEvents(
   return { events };
 }
 
-async function listRepositoryIssueEvents(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listRepositoryIssueEvents(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const events = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/issues/events`,
     query: compactObject({

@@ -6,6 +6,9 @@ Start the local runtime:
 npm run dev
 ```
 
+If the runtime was started with `OOMOL_CONNECT_API_TOKEN`, set the same variable when running
+examples.
+
 Run a no-auth Hacker News action:
 
 ```bash

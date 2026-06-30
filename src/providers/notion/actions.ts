@@ -115,15 +115,24 @@ const idInput = (key: string, description: string): JsonSchema =>
 
 const paginationInput = (idKey?: string, idDescription?: string): JsonSchema =>
   s.object(
-    {
-      ...(idKey ? { [idKey]: s.string({ minLength: 1, description: idDescription }) } : {}),
-      pageSize: s.integer({
-        minimum: 1,
-        maximum: 100,
-        description: "The number of results per page.",
-      }),
-      startCursor: s.string({ description: "The cursor for pagination." }),
-    },
+    idKey
+      ? {
+          [idKey]: s.string({ minLength: 1, description: idDescription }),
+          pageSize: s.integer({
+            minimum: 1,
+            maximum: 100,
+            description: "The number of results per page.",
+          }),
+          startCursor: s.string({ description: "The cursor for pagination." }),
+        }
+      : {
+          pageSize: s.integer({
+            minimum: 1,
+            maximum: 100,
+            description: "The number of results per page.",
+          }),
+          startCursor: s.string({ description: "The cursor for pagination." }),
+        },
     {
       required: idKey ? [idKey] : [],
       description: "The input payload for this action.",
@@ -176,8 +185,7 @@ const action = (input: {
 export const notionActions: ActionDefinition[] = [
   action({
     name: "search",
-    description:
-      "Search Notion pages and data sources with optional filter, sort, and pagination controls.",
+    description: "Search Notion pages and data sources with optional filter, sort, and pagination controls.",
     requiredScopes: notionReadScopes,
     inputSchema: s.object(
       {
@@ -214,8 +222,7 @@ export const notionActions: ActionDefinition[] = [
   }),
   action({
     name: "create_page",
-    description:
-      "Create a Notion page under a parent page, data source, or workspace-level private area.",
+    description: "Create a Notion page under a parent page, data source, or workspace-level private area.",
     requiredScopes: notionWriteScopes,
     inputSchema: s.object(
       {
@@ -235,8 +242,7 @@ export const notionActions: ActionDefinition[] = [
   }),
   action({
     name: "update_page",
-    description:
-      "Update a Notion page's properties, title, icon, cover, trash status, or locked state.",
+    description: "Update a Notion page's properties, title, icon, cover, trash status, or locked state.",
     requiredScopes: notionWriteScopes,
     inputSchema: s.object(
       {
@@ -470,8 +476,7 @@ export const notionActions: ActionDefinition[] = [
   }),
   action({
     name: "update_data_source",
-    description:
-      "Update a Notion data source's title, icon, properties schema, parent, or trash status.",
+    description: "Update a Notion data source's title, icon, properties schema, parent, or trash status.",
     requiredScopes: notionWriteScopes,
     inputSchema: s.object(
       {
@@ -489,8 +494,7 @@ export const notionActions: ActionDefinition[] = [
   }),
   action({
     name: "query_data_source",
-    description:
-      "Query a Notion data source with filters, sorts, pagination, and optional property filtering.",
+    description: "Query a Notion data source with filters, sorts, pagination, and optional property filtering.",
     requiredScopes: notionReadScopes,
     inputSchema: s.object(
       {
@@ -517,10 +521,7 @@ export const notionActions: ActionDefinition[] = [
     name: "list_data_source_templates",
     description: "List templates available on a Notion data source.",
     requiredScopes: notionReadScopes,
-    inputSchema: paginationInput(
-      "dataSourceId",
-      "The data source ID whose templates should be listed.",
-    ),
+    inputSchema: paginationInput("dataSourceId", "The data source ID whose templates should be listed."),
     outputSchema: listOutput(notionObject, "Data source templates returned by Notion."),
   }),
 ];

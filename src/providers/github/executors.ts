@@ -1,5 +1,5 @@
 import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { GitHubActionContext, GitHubActionHandler } from "./runtime-shared.ts";
+import type { GitHubActionContext } from "./runtime-shared.ts";
 
 import { defineProviderExecutors, requireBearerCredential } from "../provider-runtime.ts";
 import { activityActionHandlers } from "./runtime-activity.ts";

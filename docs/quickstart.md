@@ -31,3 +31,34 @@ The web console is served at `http://localhost:3000` after building the `web` wo
 npm run build:web
 npm run dev
 ```
+
+Local runtime state is stored in `./data/connect.sqlite` by default. Override the directory with:
+
+```bash
+OOMOL_CONNECT_DATA_DIR=/path/to/data npm run dev
+```
+
+With Docker Compose, the bundled `connector-data` volume is mounted at `/app/data`.
+
+Set `OOMOL_CONNECT_ENCRYPTION_KEY` to encrypt stored credentials:
+
+```bash
+OOMOL_CONNECT_ENCRYPTION_KEY="replace-with-a-long-random-secret" npm run dev
+```
+
+Set `OOMOL_CONNECT_API_TOKEN` to require a bearer token for API and MCP requests:
+
+```bash
+OOMOL_CONNECT_API_TOKEN="replace-with-a-local-token" npm run dev
+curl -s http://localhost:3000/api/actions \
+  -H "authorization: Bearer replace-with-a-local-token"
+```
+
+The server binds to `127.0.0.1` by default. Set `HOST=0.0.0.0` only when the runtime must be
+reachable from outside the local machine or container.
+
+Constrain executable actions with comma-separated action ids or provider wildcards:
+
+```bash
+OOMOL_CONNECT_ALLOWED_ACTIONS="hackernews.*,github.get_authenticated_user" npm run dev
+```

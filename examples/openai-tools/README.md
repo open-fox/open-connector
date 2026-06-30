@@ -8,6 +8,9 @@ Start the local runtime:
 npm run dev
 ```
 
+If the runtime was started with `OOMOL_CONNECT_API_TOKEN`, set the same variable when running
+examples.
+
 Print the tool definitions sent to the OpenAI Responses API:
 
 ```bash

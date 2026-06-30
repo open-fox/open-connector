@@ -42,9 +42,7 @@ export class ProviderLoader implements IProviderLoader {
 
     const module = await loadExecutors();
     const executor = this._findActionExecutor(service, actionId, module.executors);
-    return executor && providerDisplayName
-      ? withProviderFallbackMessage(executor, providerDisplayName)
-      : executor;
+    return executor && providerDisplayName ? withProviderFallbackMessage(executor, providerDisplayName) : executor;
   }
 
   async loadCredentialValidators(service: string): Promise<CredentialValidators | undefined> {

@@ -1,11 +1,12 @@
 import type { CatalogStore } from "./catalog-store.ts";
-import type { ConnectionService } from "./connections/connection-service.ts";
+import type { ConnectionService } from "./connection-service.ts";
+import type { ActionPolicyService } from "./core/action-policy.ts";
 import type { JsonSchema } from "./core/types.ts";
 import type { IProviderLoader } from "./providers/provider-loader.ts";
+import type { ActionRunner } from "./server/action-runner.ts";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
-import { executeAction as executeProviderAction } from "./core/execution.ts";
 import { renderActionMarkdown } from "./server/action-markdown.ts";
 
 /**
@@ -15,6 +16,8 @@ export interface IMcpServerOptions {
   catalog: CatalogStore;
   providerLoader: IProviderLoader;
   connections: ConnectionService;
+  actions: ActionRunner;
+  actionPolicy?: ActionPolicyService;
 }
 
 /**
@@ -40,8 +43,7 @@ const mcpToolSummaries: IMcpToolSummary[] = [
   {
     name: "get_action_guide",
     title: "Get Action Guide",
-    description:
-      "Return the compact markdown guide for one action, including examples and parameters.",
+    description: "Return the compact markdown guide for one action, including examples and parameters.",
   },
   {
     name: "execute_action",
@@ -76,10 +78,7 @@ export function createMcpServer(options: IMcpServerOptions): McpServer {
       title: "List Apps",
       description: "List available provider apps with connection and action counts.",
       inputSchema: {
-        query: z
-          .string()
-          .optional()
-          .describe("Optional case-insensitive app name, service, category, or auth filter."),
+        query: z.string().optional().describe("Optional case-insensitive app name, service, category, or auth filter."),
       },
     },
     async ({ query }) => textResult(listApps(options, query)),
@@ -95,32 +94,22 @@ export function createMcpServer(options: IMcpServerOptions): McpServer {
         query: z
           .string()
           .optional()
-          .describe(
-            "Optional case-insensitive search text matched against action id, name, description, and scopes.",
-          ),
+          .describe("Optional case-insensitive search text matched against action id, name, description, and scopes."),
         service: z
           .string()
           .optional()
           .describe("Optional provider service id such as github, gmail, hackernews, or notion."),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(50)
-          .default(20)
-          .describe("Maximum number of actions to return."),
+        limit: z.number().int().min(1).max(50).default(20).describe("Maximum number of actions to return."),
       },
     },
-    async ({ query, service, limit }) =>
-      textResult(searchActions(options, { query, service, limit })),
+    async ({ query, service, limit }) => textResult(searchActions(options, { query, service, limit })),
   );
 
   server.registerTool(
     "get_action_guide",
     {
       title: "Get Action Guide",
-      description:
-        "Return one action's compact markdown guide, including local execute examples and input parameters.",
+      description: "Return one action's compact markdown guide, including local execute examples and input parameters.",
       inputSchema: {
         actionId: z.string().describe("Full action id, for example github.get_current_user."),
       },
@@ -156,12 +145,7 @@ function listApps(options: IMcpServerOptions, query: string | undefined): unknow
         return true;
       }
 
-      return [
-        provider.service,
-        provider.displayName,
-        provider.categories.join(" "),
-        provider.authTypes.join(" "),
-      ]
+      return [provider.service, provider.displayName, provider.categories.join(" "), provider.authTypes.join(" ")]
         .join(" ")
         .toLowerCase()
         .includes(normalized);
@@ -200,6 +184,8 @@ function searchActions(
       service: action.service,
       name: action.name,
       description: action.description,
+      execution: action.execution,
+      policy: options.actionPolicy?.evaluate(action) ?? { allowed: true },
       requiredScopes: action.requiredScopes,
       inputSummary: summarizeInputSchema(action.inputSchema),
     }));
@@ -239,23 +225,18 @@ async function executeAction(
     };
   }
 
-  const executor = await options.providerLoader.loadActionExecutor(
-    action.service,
-    action.id,
-    options.catalog.providers.find((provider) => provider.service === action.service)?.displayName,
-  );
-  return executeProviderAction(action, executor, input, options.connections);
+  return options.actions.run({
+    actionId,
+    input,
+    caller: "mcp",
+  });
 }
 
 function summarizeInputSchema(schema: JsonSchema): unknown {
   const properties =
-    schema.properties && typeof schema.properties === "object"
-      ? (schema.properties as Record<string, JsonSchema>)
-      : {};
+    schema.properties && typeof schema.properties === "object" ? (schema.properties as Record<string, JsonSchema>) : {};
   const required = new Set(
-    Array.isArray(schema.required)
-      ? schema.required.filter((value): value is string => typeof value === "string")
-      : [],
+    Array.isArray(schema.required) ? schema.required.filter((value): value is string => typeof value === "string") : [],
   );
 
   return Object.entries(properties).map(([name, property]) => ({

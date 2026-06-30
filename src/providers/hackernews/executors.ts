@@ -1,11 +1,6 @@
 import type { ProviderExecutors } from "../../core/types.ts";
 
-import {
-  optionalBoolean,
-  optionalInteger,
-  positiveInteger,
-  requiredString,
-} from "../../core/cast.ts";
+import { optionalBoolean, optionalInteger, positiveInteger, requiredString } from "../../core/cast.ts";
 import { defineProviderExecutors, readProviderJson, setSearchParams } from "../provider-runtime.ts";
 
 const firebaseBaseUrl = "https://hacker-news.firebaseio.com/v0";
@@ -13,8 +8,9 @@ const algoliaBaseUrl = "https://hn.algolia.com/api/v1";
 const maxTruncatedTextLength = 500;
 
 type FirebaseItemType = "job" | "story" | "comment" | "poll" | "pollopt";
+type StoryFeed = "askstories" | "beststories" | "jobstories" | "newstories" | "showstories" | "topstories";
 
-type FirebaseItem = {
+interface FirebaseItem {
   by?: string;
   descendants?: number;
   id: number;
@@ -28,17 +24,17 @@ type FirebaseItem = {
   title?: string;
   type: FirebaseItemType;
   url?: string;
-};
+}
 
-type User = {
+interface User {
   about?: string;
   created: number;
   id: string;
   karma: number;
   submitted?: number[];
-};
+}
 
-type TreeItem = {
+interface TreeItem {
   author?: string;
   children?: TreeItem[];
   children_shown?: number;
@@ -56,11 +52,18 @@ type TreeItem = {
   total_children_count?: number;
   type: FirebaseItemType;
   url?: string;
-};
+}
 
-type HackerNewsActionContext = {
+interface HackerNewsActionContext {
   fetcher: typeof fetch;
-};
+}
+
+interface TreeBuildOptions {
+  storyId: number | undefined;
+  maxDepth: number;
+  maxChildren: number;
+  truncateText: boolean;
+}
 
 /**
  * Action names implemented by the Hacker News provider.
@@ -141,7 +144,7 @@ export const executors: ProviderExecutors = defineProviderExecutors<HackerNewsAc
 });
 
 async function getStoryIdList(
-  feed: "askstories" | "beststories" | "jobstories" | "newstories" | "showstories" | "topstories",
+  feed: StoryFeed,
   input: Record<string, unknown>,
   fetcher: typeof fetch,
   includeCount: boolean,
@@ -158,10 +161,7 @@ async function getItem(input: Record<string, unknown>, fetcher: typeof fetch): P
   );
 }
 
-async function getItemWithId(
-  input: Record<string, unknown>,
-  fetcher: typeof fetch,
-): Promise<unknown> {
+async function getItemWithId(input: Record<string, unknown>, fetcher: typeof fetch): Promise<unknown> {
   const itemId = positiveInteger(input.item_id, "item_id");
   const rootItem = await fetchFirebaseItem(itemId, fetcher);
 
@@ -187,10 +187,7 @@ async function getItemWithId(
   };
 }
 
-async function getLatestPosts(
-  input: Record<string, unknown>,
-  fetcher: typeof fetch,
-): Promise<unknown> {
+async function getLatestPosts(input: Record<string, unknown>, fetcher: typeof fetch): Promise<unknown> {
   return requestAlgolia("search_by_date", fetcher, {
     page: String(optionalInteger(input.page) ?? 0),
     tags: readOptionalTags(input.tags),
@@ -198,21 +195,14 @@ async function getLatestPosts(
   });
 }
 
-async function getMaxItemId(
-  input: Record<string, unknown>,
-  fetcher: typeof fetch,
-): Promise<unknown> {
+async function getMaxItemId(input: Record<string, unknown>, fetcher: typeof fetch): Promise<unknown> {
   return {
     max_item_id: await requestFirebase<number>("maxitem.json", fetcher, readPrettyQuery(input)),
   };
 }
 
 async function getUpdates(input: Record<string, unknown>, fetcher: typeof fetch): Promise<unknown> {
-  return requestFirebase<{ items: number[]; profiles: string[] }>(
-    "updates.json",
-    fetcher,
-    readPrettyQuery(input),
-  );
+  return requestFirebase<{ items: number[]; profiles: string[] }>("updates.json", fetcher, readPrettyQuery(input));
 }
 
 async function getUser(input: Record<string, unknown>, fetcher: typeof fetch): Promise<unknown> {
@@ -232,10 +222,7 @@ async function getUser(input: Record<string, unknown>, fetcher: typeof fetch): P
   };
 }
 
-async function getUserByUsername(
-  input: Record<string, unknown>,
-  fetcher: typeof fetch,
-): Promise<unknown> {
+async function getUserByUsername(input: Record<string, unknown>, fetcher: typeof fetch): Promise<unknown> {
   return requestFirebase<User | null>(
     `user/${encodeURIComponent(requiredString(input.username, "username"))}.json`,
     fetcher,
@@ -243,10 +230,7 @@ async function getUserByUsername(
   );
 }
 
-async function searchPosts(
-  input: Record<string, unknown>,
-  fetcher: typeof fetch,
-): Promise<unknown> {
+async function searchPosts(input: Record<string, unknown>, fetcher: typeof fetch): Promise<unknown> {
   return requestAlgolia("search", fetcher, {
     query: requiredString(input.query, "query"),
     page: String(optionalInteger(input.page) ?? 0),
@@ -255,19 +239,9 @@ async function searchPosts(
   });
 }
 
-async function buildTreeItem(
-  item: FirebaseItem,
-  options: {
-    storyId: number | undefined;
-    maxDepth: number;
-    maxChildren: number;
-    truncateText: boolean;
-  },
-  fetcher: typeof fetch,
-): Promise<TreeItem> {
+async function buildTreeItem(item: FirebaseItem, options: TreeBuildOptions, fetcher: typeof fetch): Promise<TreeItem> {
   const childIds = Array.isArray(item.kids) ? item.kids.filter((id) => Number.isInteger(id)) : [];
-  const storyId =
-    options.storyId ?? (item.type === "story" || item.type === "poll" ? item.id : undefined);
+  const storyId = options.storyId ?? (item.type === "story" || item.type === "poll" ? item.id : undefined);
   const baseItem: TreeItem = {
     id: item.id,
     type: item.type,
@@ -279,8 +253,7 @@ async function buildTreeItem(
     options: item.parts,
     story_id: storyId,
     parent_id: item.parent,
-    created_at:
-      typeof item.time === "number" ? new Date(item.time * 1000).toISOString() : undefined,
+    created_at: typeof item.time === "number" ? new Date(item.time * 1000).toISOString() : undefined,
     created_at_i: item.time,
   };
 
@@ -329,10 +302,7 @@ async function buildTreeItem(
   };
 }
 
-async function resolveStoryId(
-  item: FirebaseItem,
-  fetcher: typeof fetch,
-): Promise<number | undefined> {
+async function resolveStoryId(item: FirebaseItem, fetcher: typeof fetch): Promise<number | undefined> {
   if (item.type === "story" || item.type === "poll") {
     return item.id;
   }

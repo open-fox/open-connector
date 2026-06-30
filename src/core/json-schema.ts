@@ -129,10 +129,7 @@ export const jsonSchema = {
     return withOptions({ type: "object", additionalProperties: values }, options);
   },
 
-  looseObject(
-    properties: Record<string, JsonSchema> = {},
-    options: JsonSchemaOptions = {},
-  ): JsonSchema {
+  looseObject(properties: Record<string, JsonSchema> = {}, options: JsonSchemaOptions = {}): JsonSchema {
     return this.object(properties, { ...options, additionalProperties: true });
   },
 

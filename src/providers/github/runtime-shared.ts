@@ -1,4 +1,4 @@
-import { compactObject, optionalInteger, optionalString, optionalText } from "../../core/cast.ts";
+import { compactObject, optionalInteger, optionalString, optionalRawString } from "../../core/cast.ts";
 import { ProviderRequestError } from "../provider-runtime.ts";
 
 export { compactObject };
@@ -13,19 +13,26 @@ export type GitHubActionContext = {
   fetcher: typeof fetch;
 };
 
-export type GitHubActionHandler = (
-  input: Record<string, unknown>,
-  context: GitHubActionContext,
-) => Promise<unknown>;
+export type GitHubActionHandler = (input: Record<string, unknown>, context: GitHubActionContext) => Promise<unknown>;
 
-export async function githubRequestJson<T>(input: {
+interface GitHubJsonRequest {
   method?: string;
   path: string;
   query?: Record<string, string | number | boolean | undefined>;
   body?: Record<string, unknown>;
   accessToken: string;
   fetcher: typeof fetch;
-}): Promise<T> {
+}
+
+interface GitHubNoContentRequest {
+  method: string;
+  path: string;
+  body?: Record<string, unknown>;
+  accessToken: string;
+  fetcher: typeof fetch;
+}
+
+export async function githubRequestJson<T>(input: GitHubJsonRequest): Promise<T> {
   const url = buildGitHubUrl(input.path, input.query);
   const response = await input.fetcher(url, {
     method: input.method ?? "GET",
@@ -41,13 +48,7 @@ export async function githubRequestJson<T>(input: {
   return payload;
 }
 
-export async function githubRequestNoContent(input: {
-  method: string;
-  path: string;
-  body?: Record<string, unknown>;
-  accessToken: string;
-  fetcher: typeof fetch;
-}): Promise<void> {
+export async function githubRequestNoContent(input: GitHubNoContentRequest): Promise<void> {
   const url = buildGitHubUrl(input.path);
   const response = await input.fetcher(url, {
     method: input.method,
@@ -61,10 +62,7 @@ export async function githubRequestNoContent(input: {
   }
 }
 
-export function buildGitHubUrl(
-  path: string,
-  query?: Record<string, string | number | boolean | undefined>,
-): string {
+export function buildGitHubUrl(path: string, query?: Record<string, string | number | boolean | undefined>): string {
   const url = new URL(`${githubApiBaseUrl}${path}`);
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value === undefined) {
@@ -85,9 +83,7 @@ export function buildRepoContentsPath(owner: string, repo: string, path?: string
         .join("/")
     : "";
 
-  return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents${
-    encodedPath ? `/${encodedPath}` : ""
-  }`;
+  return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents${encodedPath ? `/${encodedPath}` : ""}`;
 }
 
 export function githubHeaders(accessToken: string, hasJsonBody: boolean): Record<string, string> {
@@ -179,7 +175,7 @@ export function decodeGitHubContent(contentBase64: string, encoding?: string): s
 }
 
 export function resolveGitHubWriteContent(input: Record<string, unknown>): string {
-  const contentBase64 = optionalText(input.contentBase64);
+  const contentBase64 = optionalRawString(input.contentBase64);
   if (contentBase64) {
     return contentBase64.replace(/[\r\n]/g, "");
   }
@@ -197,9 +193,9 @@ export function mapReviewComment(comment: unknown): Record<string, unknown> {
     path: String(value.path ?? ""),
     body: String(value.body ?? ""),
     line: optionalInteger(value.line),
-    side: optionalText(value.side),
+    side: optionalString(value.side),
     start_line: optionalInteger(value.startLine),
-    start_side: optionalText(value.startSide),
+    start_side: optionalString(value.startSide),
   });
 }
 

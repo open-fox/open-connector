@@ -1,6 +1,10 @@
 // MCP tools endpoint exposed by the local runtime.
 
-const response = await fetch("http://localhost:3000/mcp/tools");
+import { localHeaders } from "../local-http/client.ts";
+
+const response = await fetch("http://localhost:3000/mcp/tools", {
+  headers: localHeaders(),
+});
 const payload = (await response.json()) as {
   tools?: Array<{ name: string; description: string; inputSchema: unknown }>;
 };

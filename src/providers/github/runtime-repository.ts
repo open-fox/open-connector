@@ -1,10 +1,6 @@
 import type { GitHubActionHandler } from "./runtime-shared.ts";
 
-import {
-  optionalBoolean,
-  optionalInteger,
-  optionalText as optionalString,
-} from "../../core/cast.ts";
+import { optionalBoolean, optionalInteger, optionalRawString, optionalString } from "../../core/cast.ts";
 import { ProviderRequestError } from "../provider-runtime.ts";
 import {
   buildRepoContentsPath,
@@ -34,7 +30,7 @@ export const repositoryActionHandlers: Record<string, GitHubActionHandler> = {
       path: "/user/repos",
       body: compactObject({
         name: String(input.name),
-        description: optionalString(input.description),
+        description: optionalRawString(input.description),
         homepage: optionalString(input.homepage),
         private: optionalBoolean(input.private),
         auto_init: optionalBoolean(input.autoInit),
@@ -118,7 +114,7 @@ export const repositoryActionHandlers: Record<string, GitHubActionHandler> = {
       body: compactObject({
         base: String(input.base),
         head: String(input.head),
-        commit_message: optionalString(input.commitMessage),
+        commit_message: optionalRawString(input.commitMessage),
       }),
       accessToken,
       fetcher,
@@ -179,11 +175,7 @@ export const repositoryActionHandlers: Record<string, GitHubActionHandler> = {
   },
 };
 
-async function listMyRepositories(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listMyRepositories(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const repositories = await githubRequestJson<Record<string, unknown>[]>({
     path: "/user/repos",
     query: compactObject({
@@ -200,11 +192,7 @@ async function listMyRepositories(
   return { repositories };
 }
 
-async function deleteRepository(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function deleteRepository(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   await githubRequestNoContent({
     method: "DELETE",
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}`,
@@ -215,11 +203,7 @@ async function deleteRepository(
   return { ok: true };
 }
 
-async function listBranches(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listBranches(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const branches = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/branches`,
     query: compactObject({
@@ -234,11 +218,7 @@ async function listBranches(
   return { branches };
 }
 
-async function listCommits(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listCommits(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const commits = await githubRequestJson<Record<string, unknown>[]>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/commits`,
     query: compactObject({
@@ -258,11 +238,7 @@ async function listCommits(
   return { commits };
 }
 
-async function compareCommits(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function compareCommits(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const comparison = await githubRequestJson<Record<string, unknown>>({
     path: `/repos/${encodeURIComponent(String(input.owner))}/${encodeURIComponent(String(input.repo))}/compare/${encodeURIComponent(String(input.basehead))}`,
     query: compactObject({
@@ -275,24 +251,14 @@ async function compareCommits(
 
   return {
     comparison,
-    commits: Array.isArray(comparison.commits)
-      ? (comparison.commits as Record<string, unknown>[])
-      : [],
+    commits: Array.isArray(comparison.commits) ? (comparison.commits as Record<string, unknown>[]) : [],
     files: Array.isArray(comparison.files) ? (comparison.files as Record<string, unknown>[]) : [],
   };
 }
 
-async function listDirectoryContents(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function listDirectoryContents(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const response = await githubRequestJson<unknown>({
-    path: buildRepoContentsPath(
-      String(input.owner),
-      String(input.repo),
-      optionalString(input.path),
-    ),
+    path: buildRepoContentsPath(String(input.owner), String(input.repo), optionalString(input.path)),
     query: compactObject({
       ref: optionalString(input.ref),
     }),
@@ -309,14 +275,8 @@ async function listDirectoryContents(
   };
 }
 
-async function getFileContents(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
-  const response = await githubRequestJson<
-    Record<string, unknown> | Array<Record<string, unknown>>
-  >({
+async function getFileContents(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
+  const response = await githubRequestJson<Record<string, unknown> | Array<Record<string, unknown>>>({
     path: buildRepoContentsPath(String(input.owner), String(input.repo), String(input.path)),
     query: compactObject({
       ref: optionalString(input.ref),
@@ -333,7 +293,7 @@ async function getFileContents(
   }
 
   const encoding = optionalString(response.encoding);
-  const rawContent = optionalString(response.content)?.replace(/\n/g, "") ?? "";
+  const rawContent = optionalRawString(response.content)?.replace(/\n/g, "") ?? "";
   return {
     ...response,
     content_base64: rawContent,

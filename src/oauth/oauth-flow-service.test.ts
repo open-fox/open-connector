@@ -1,17 +1,12 @@
-import type { CatalogStore } from "../catalog-store.ts";
-import type { IConnectionStore } from "../connections/connection-service.ts";
-import type {
-  ActionExecutor,
-  CredentialValidators,
-  ProviderDefinition,
-  ResolvedCredential,
-} from "../core/types.ts";
+import type { IConnectionStore } from "../connection-service.ts";
+import type { ActionExecutor, CredentialValidators, ProviderDefinition, ResolvedCredential } from "../core/types.ts";
 import type { IProviderLoader } from "../providers/provider-loader.ts";
 import type { IOAuthClientConfigStore, OAuthClientConfig } from "./oauth-client-config-service.ts";
 import type { IOAuthStateStore, OAuthAuthorizationState } from "./oauth-flow-service.ts";
 
 import { describe, expect, it } from "vitest";
-import { ConnectionService } from "../connections/connection-service.ts";
+import { createCatalogStore } from "../catalog-store.ts";
+import { ConnectionService } from "../connection-service.ts";
 import { OAuthClientConfigService } from "./oauth-client-config-service.ts";
 import { OAuthFlowService } from "./oauth-flow-service.ts";
 
@@ -65,9 +60,7 @@ describe("OAuthFlowService", () => {
 
     expect(authorizationUrl.origin).toBe("https://example.com");
     expect(authorizationUrl.searchParams.get("client_id")).toBe("client-id");
-    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "http://localhost:3000/oauth/callback/example",
-    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe("http://localhost:3000/oauth/callback/example");
     expect(authorizationUrl.searchParams.get("scope")).toBe("read write");
     expect(authorizationUrl.searchParams.get("state")).toBe(started.state);
   });
@@ -100,11 +93,7 @@ function createServices(providers: ProviderDefinition[]): {
   clientConfigs: OAuthClientConfigService;
   flow: OAuthFlowService;
 } {
-  const catalog: CatalogStore = {
-    providers,
-    actions: [],
-    actionsById: new Map(),
-  };
+  const catalog = createCatalogStore(providers);
   const connections = new ConnectionService({
     catalog,
     providerLoader: new EmptyProviderLoader(),
@@ -127,10 +116,7 @@ function createServices(providers: ProviderDefinition[]): {
 }
 
 class EmptyProviderLoader implements IProviderLoader {
-  async loadActionExecutor(
-    _service: string,
-    _actionId: string,
-  ): Promise<ActionExecutor | undefined> {
+  async loadActionExecutor(_service: string, _actionId: string): Promise<ActionExecutor | undefined> {
     return undefined;
   }
 

@@ -17,10 +17,7 @@ export type ProviderFetch = typeof fetch;
  * Provider-native handler shape. The provider owns `TContext`; the shared
  * runtime only adapts it to the action executor contract.
  */
-export type ProviderRuntimeHandler<TContext> = (
-  input: Record<string, unknown>,
-  context: TContext,
-) => Promise<unknown>;
+export type ProviderRuntimeHandler<TContext> = (input: Record<string, unknown>, context: TContext) => Promise<unknown>;
 
 /**
  * Runtime context factory used before invoking one provider-native handler.
@@ -29,6 +26,18 @@ export type ProviderRuntimeContextFactory<TContext> = (
   context: ExecutionContext,
   fetcher: ProviderFetch,
 ) => Promise<TContext> | TContext;
+
+export interface ProviderExecutorDefinition<TContext> {
+  service: string;
+  handlers: Record<string, ProviderRuntimeHandler<TContext>>;
+  createContext: ProviderRuntimeContextFactory<TContext>;
+  fallbackMessage?: string;
+}
+
+export interface BearerCredential {
+  tokenType: string;
+  accessToken: string;
+}
 
 /**
  * Error raised for provider API responses and mapped to stable execution errors.
@@ -117,19 +126,11 @@ export function toProviderExecutionError(error: unknown, fallbackMessage: string
  * names. The runtime adds the service prefix and returns `undefined` through
  * `ProviderLoader` when a catalog action has no local executor.
  */
-export function defineProviderExecutors<TContext>(input: {
-  service: string;
-  handlers: Record<string, ProviderRuntimeHandler<TContext>>;
-  createContext: ProviderRuntimeContextFactory<TContext>;
-  fallbackMessage?: string;
-}): ProviderExecutors {
+export function defineProviderExecutors<TContext>(input: ProviderExecutorDefinition<TContext>): ProviderExecutors {
   const executors: ProviderExecutors = {};
   const fallbackMessage = input.fallbackMessage ?? "provider request failed";
   for (const [name, handler] of Object.entries(input.handlers)) {
-    executors[`${input.service}.${name}`] = async (
-      actionInput,
-      executionContext,
-    ): Promise<ExecutionResult> => {
+    executors[`${input.service}.${name}`] = async (actionInput, executionContext): Promise<ExecutionResult> => {
       try {
         return {
           ok: true,
@@ -151,10 +152,7 @@ export function defineProviderExecutors<TContext>(input: {
  * Attach the provider display name to a loaded executor so generic provider
  * errors can use catalog metadata without duplicating it in executor modules.
  */
-export function withProviderFallbackMessage(
-  executor: ActionExecutor,
-  displayName: string,
-): ActionExecutor {
+export function withProviderFallbackMessage(executor: ActionExecutor, displayName: string): ActionExecutor {
   return async (input, context): Promise<ExecutionResult> => {
     const result = await executor(input, context);
     if (result.ok || !result.error || result.error.message !== "provider request failed") {
@@ -206,10 +204,7 @@ export async function requireOAuthCredential(
 /**
  * Return a bearer token from either OAuth or API key credentials.
  */
-export async function requireBearerCredential(
-  context: ExecutionContext,
-  service: string,
-): Promise<{ tokenType: string; accessToken: string }> {
+export async function requireBearerCredential(context: ExecutionContext, service: string): Promise<BearerCredential> {
   const credential = await context.getCredential(service);
   if (credential?.authType === "oauth2") {
     return {

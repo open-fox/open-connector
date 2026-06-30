@@ -17,10 +17,7 @@ export type ActionInputValidationResult = {
 /**
  * Validate unknown user input against an action's declared input schema.
  */
-export function validateActionInput(
-  action: ActionDefinition,
-  input: unknown,
-): ActionInputValidationResult {
+export function validateActionInput(action: ActionDefinition, input: unknown): ActionInputValidationResult {
   const validate = ajv.compile(action.inputSchema);
   const valid = validate(input);
   const errors = validate.errors ?? [];

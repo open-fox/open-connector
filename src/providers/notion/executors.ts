@@ -1,15 +1,7 @@
-import type {
-  CredentialValidators,
-  ExecutionContext,
-  ProviderExecutors,
-} from "../../core/types.ts";
+import type { CredentialValidators, ExecutionContext, ProviderExecutors } from "../../core/types.ts";
 
-import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
-import {
-  defineProviderExecutors,
-  ProviderRequestError,
-  requireBearerCredential,
-} from "../provider-runtime.ts";
+import { compactObject } from "../../core/cast.ts";
+import { defineProviderExecutors, ProviderRequestError, requireBearerCredential } from "../provider-runtime.ts";
 
 const service = "notion";
 const notionCoreVersion = "2026-03-11";
@@ -23,15 +15,12 @@ interface NotionRequestInput {
   body?: Record<string, unknown>;
 }
 
-type NotionActionContext = {
+interface NotionActionContext {
   accessToken: string;
   fetcher: typeof fetch;
-};
+}
 
-type NotionActionHandler = (
-  input: Record<string, unknown>,
-  context: NotionActionContext,
-) => Promise<unknown>;
+type NotionActionHandler = (input: Record<string, unknown>, context: NotionActionContext) => Promise<unknown>;
 
 export const notionActionHandlers: Record<string, NotionActionHandler> = {
   search(input, context): Promise<unknown> {
@@ -114,10 +103,7 @@ export const notionActionHandlers: Record<string, NotionActionHandler> = {
 export const executors: ProviderExecutors = defineProviderExecutors<NotionActionContext>({
   service,
   handlers: notionActionHandlers,
-  async createContext(
-    context: ExecutionContext,
-    fetcher: typeof fetch,
-  ): Promise<NotionActionContext> {
+  async createContext(context: ExecutionContext, fetcher: typeof fetch): Promise<NotionActionContext> {
     const credential = await requireBearerCredential(context, service);
     return { accessToken: credential.accessToken, fetcher };
   },
@@ -155,17 +141,12 @@ async function fetchNotionCurrentAccount(accessToken: string, fetcher: typeof fe
 
   return {
     providerAccountId: payload.id,
-    accountLabel:
-      payload.bot?.workspace_name ?? payload.name ?? payload.workspace_name ?? payload.id,
+    accountLabel: payload.bot?.workspace_name ?? payload.name ?? payload.workspace_name ?? payload.id,
     providerMetadata: payload as Record<string, unknown>,
   };
 }
 
-async function notionSearch(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionSearch(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -185,11 +166,7 @@ async function notionSearch(
   return payload ?? {};
 }
 
-async function notionRetrievePage(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionRetrievePage(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const pageId = String(input.pageId);
   const page = await notionRequest<NotionObject>(
     accessToken,
@@ -202,21 +179,14 @@ async function notionRetrievePage(
   return page ?? {};
 }
 
-async function notionRetrievePageMarkdown(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionRetrievePageMarkdown(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const pageId = String(input.pageId);
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
       path: `/pages/${pageId}/markdown`,
       query: compactQuery({
-        include_transcript:
-          typeof input.includeTranscript === "boolean"
-            ? String(input.includeTranscript)
-            : undefined,
+        include_transcript: typeof input.includeTranscript === "boolean" ? String(input.includeTranscript) : undefined,
       }),
     },
     fetcher,
@@ -225,11 +195,7 @@ async function notionRetrievePageMarkdown(
   return payload ?? {};
 }
 
-async function notionRetrievePageProperty(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionRetrievePageProperty(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -245,11 +211,7 @@ async function notionRetrievePageProperty(
   return payload ?? {};
 }
 
-async function notionUpdatePageMarkdown(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionUpdatePageMarkdown(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const pageId = String(input.pageId);
   const payload = await notionRequest<NotionObject>(
     accessToken,
@@ -264,11 +226,7 @@ async function notionUpdatePageMarkdown(
   return payload ?? {};
 }
 
-async function notionCreatePage(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionCreatePage(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -282,11 +240,7 @@ async function notionCreatePage(
   return payload ?? {};
 }
 
-async function notionMovePage(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionMovePage(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -302,11 +256,7 @@ async function notionMovePage(
   return payload ?? {};
 }
 
-async function notionUpdatePage(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionUpdatePage(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const pageId = String(input.pageId);
   const properties = asObject(input.properties);
   const nextProperties =
@@ -339,11 +289,7 @@ async function notionUpdatePage(
   return payload ?? {};
 }
 
-async function notionGetPage(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionGetPage(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const pageId = String(input.pageId);
   const [page, blockChildren] = await Promise.all([
     notionRetrievePage({ pageId }, accessToken, fetcher),
@@ -356,11 +302,7 @@ async function notionGetPage(
   };
 }
 
-async function notionRetrieveBlock(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionRetrieveBlock(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -372,11 +314,7 @@ async function notionRetrieveBlock(
   return payload ?? {};
 }
 
-async function notionListUsers(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionListUsers(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -392,11 +330,7 @@ async function notionListUsers(
   return payload ?? {};
 }
 
-async function notionRetrieveUser(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionRetrieveUser(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -408,11 +342,7 @@ async function notionRetrieveUser(
   return payload ?? {};
 }
 
-async function notionListBlockChildren(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionListBlockChildren(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -428,11 +358,7 @@ async function notionListBlockChildren(
   return payload ?? {};
 }
 
-async function notionAppendBlockChildren(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionAppendBlockChildren(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -449,11 +375,7 @@ async function notionAppendBlockChildren(
   return payload ?? {};
 }
 
-async function notionUpdateBlock(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionUpdateBlock(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const { blockId, ...rest } = input;
   const payload = await notionRequest<NotionObject>(
     accessToken,
@@ -471,11 +393,7 @@ async function notionUpdateBlock(
   return payload ?? {};
 }
 
-async function notionDeleteBlock(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionDeleteBlock(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -488,11 +406,7 @@ async function notionDeleteBlock(
   return payload ?? {};
 }
 
-async function notionAppendBlock(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionAppendBlock(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionAppendBlockChildren(
     {
       blockId: String(input.pageId),
@@ -518,11 +432,7 @@ async function notionAppendBlock(
   return payload;
 }
 
-async function notionCreateDatabase(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionCreateDatabase(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -544,11 +454,7 @@ async function notionCreateDatabase(
   return payload ?? {};
 }
 
-async function notionRetrieveDatabase(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionRetrieveDatabase(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -560,11 +466,7 @@ async function notionRetrieveDatabase(
   return payload ?? {};
 }
 
-async function notionUpdateDatabase(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionUpdateDatabase(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -587,11 +489,7 @@ async function notionUpdateDatabase(
   return payload ?? {};
 }
 
-async function notionCreateDataSource(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionCreateDataSource(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -610,11 +508,7 @@ async function notionCreateDataSource(
   return payload ?? {};
 }
 
-async function notionRetrieveDataSource(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionRetrieveDataSource(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -626,11 +520,7 @@ async function notionRetrieveDataSource(
   return payload ?? {};
 }
 
-async function notionUpdateDataSource(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionUpdateDataSource(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const payload = await notionRequest<NotionObject>(
     accessToken,
     {
@@ -651,15 +541,9 @@ async function notionUpdateDataSource(
   return payload ?? {};
 }
 
-async function notionQueryDataSource(
-  input: Record<string, unknown>,
-  accessToken: string,
-  fetcher: typeof fetch,
-) {
+async function notionQueryDataSource(input: Record<string, unknown>, accessToken: string, fetcher: typeof fetch) {
   const filterProperties = Array.isArray(input.filterProperties)
-    ? input.filterProperties
-        .map((item) => (typeof item === "string" ? item : ""))
-        .filter((item) => item.length > 0)
+    ? input.filterProperties.map((item) => (typeof item === "string" ? item : "")).filter((item) => item.length > 0)
     : undefined;
 
   const payload = await notionRequest<NotionObject>(
@@ -705,11 +589,7 @@ async function notionListDataSourceTemplates(
   return payload ?? {};
 }
 
-async function notionRequest<T>(
-  accessToken: string,
-  input: NotionRequestInput,
-  fetcher: typeof fetch,
-) {
+async function notionRequest<T>(accessToken: string, input: NotionRequestInput, fetcher: typeof fetch) {
   const url = new URL(`https://api.notion.com/v1${input.path}`);
   for (const [key, value] of Object.entries(input.query ?? {})) {
     if (value == null) {
@@ -726,22 +606,30 @@ async function notionRequest<T>(
     url.searchParams.set(key, String(value));
   }
 
-  const response = await fetcher(url.toString(), {
+  const init: RequestInit = {
     method: input.method ?? "GET",
     headers: buildNotionHeaders(accessToken, input.path, input.body != null),
-    ...(input.body ? { body: JSON.stringify(input.body) } : {}),
-  });
+  };
+  if (input.body) {
+    init.body = JSON.stringify(input.body);
+  }
+
+  const response = await fetcher(url.toString(), init);
 
   await assertNotionResponse(response);
   return parseJsonBody<T>(response);
 }
 
 function buildNotionHeaders(accessToken: string, path: string, hasBody: boolean) {
-  return {
+  const headers: Record<string, string> = {
     authorization: `Bearer ${accessToken}`,
-    ...(hasBody ? { "content-type": "application/json" } : {}),
     "notion-version": notionCoreVersion,
   };
+  if (hasBody) {
+    headers["content-type"] = "application/json";
+  }
+
+  return headers;
 }
 
 async function parseJsonBody<T>(response: Response) {
@@ -803,8 +691,7 @@ async function parseNotionErrorBody(response: Response) {
 function buildCreatePageBody(input: Record<string, unknown>) {
   const parent = asObject(input.parent);
   const parentId = asNonEmptyString(input.parentId);
-  const children =
-    Array.isArray(input.children) && input.children.length > 0 ? input.children : undefined;
+  const children = Array.isArray(input.children) && input.children.length > 0 ? input.children : undefined;
   const markdown = typeof input.markdown === "string" ? input.markdown : undefined;
   const icon = asObject(input.icon);
   const cover = asObject(input.cover);
@@ -817,10 +704,7 @@ function buildCreatePageBody(input: Record<string, unknown>) {
 
   if (parent) {
     if (typeof input.title === "string") {
-      throw new ProviderRequestError(
-        400,
-        "title cannot be used with parent; use properties instead",
-      );
+      throw new ProviderRequestError(400, "title cannot be used with parent; use properties instead");
     }
     if (parentId && !isSamePageParent(parent, parentId)) {
       throw new ProviderRequestError(400, "parent and parentId must describe the same page parent");
@@ -886,9 +770,7 @@ function buildTitleProperty(title: string) {
   };
 }
 
-function compactQuery<
-  T extends Record<string, string | number | Array<string | number> | undefined>,
->(value: T) {
+function compactQuery<T extends Record<string, string | number | Array<string | number> | undefined>>(value: T) {
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => {
       if (item === undefined) {
@@ -903,9 +785,7 @@ function compactQuery<
 }
 
 function asObject(value: unknown) {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 function asNumber(value: unknown) {

@@ -31,12 +31,7 @@ export async function readJsonBody(context: Context): Promise<JsonRequestBody> {
 /**
  * Write the standard JSON error envelope used by local HTTP routes.
  */
-export function jsonError(
-  context: Context,
-  status: 400 | 404 | 500,
-  code: string,
-  message: string,
-): Response {
+export function jsonError(context: Context, status: 400 | 401 | 404 | 500, code: string, message: string): Response {
   return context.json(
     {
       error: {
@@ -59,21 +54,12 @@ export function notFound(context: Context): Response {
  * Write an unexpected server error without exposing stack traces.
  */
 export function internalError(context: Context, error: unknown): Response {
-  return jsonError(
-    context,
-    500,
-    "internal_error",
-    error instanceof Error ? error.message : "Unknown error.",
-  );
+  return jsonError(context, 500, "internal_error", error instanceof Error ? error.message : "Unknown error.");
 }
 
 /**
  * Escape plain text for the tiny OAuth callback completion page.
  */
 export function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }

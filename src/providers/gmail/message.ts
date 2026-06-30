@@ -130,8 +130,7 @@ export function resolveReplyHeaders(resource: GmailMessageResource): {
   return {
     subject: normalizeReplySubject(readHeader(headers, "Subject")),
     to: firstAddress(readHeader(headers, "Reply-To")) || firstAddress(readHeader(headers, "From")),
-    references:
-      readHeader(headers, "References") || readHeader(headers, "Message-ID") || resource.id,
+    references: readHeader(headers, "References") || readHeader(headers, "Message-ID") || resource.id,
     inReplyTo: readHeader(headers, "Message-ID") || resource.id,
   };
 }
@@ -263,13 +262,21 @@ export function normalizeMessageId(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-export function buildRecipients(input: {
+interface RecipientsInput {
   to?: unknown;
   recipientEmail?: unknown;
   extraRecipients?: unknown;
   cc?: unknown;
   bcc?: unknown;
-}): { to: string[]; cc: string[]; bcc: string[] } {
+}
+
+interface Recipients {
+  to: string[];
+  cc: string[];
+  bcc: string[];
+}
+
+export function buildRecipients(input: RecipientsInput): Recipients {
   const primaryTo = optionalAddressList(input.to);
   const recipientEmail = optionalAddressList(input.recipientEmail);
   const extraRecipients = optionalAddressList(input.extraRecipients);

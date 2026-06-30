@@ -11,4 +11,11 @@ Do not hand-edit generated catalog files as source. Update provider definitions 
 npm run generate:catalog
 ```
 
+At runtime, catalog responses add execution status that is not stored in generated catalog JSON:
+
+- `locallyExecutable`: the open-source runtime has a local executor for the action.
+- `catalogOnly`: schemas and metadata are available, but no local executor is wired yet.
+- `needsCredential`: the provider needs a configured local connection before execution.
+- `noAuthRunnable`: the action belongs to a provider that can run without stored credentials.
+
 For the full contribution workflow, see `.codex/skills/add-provider/SKILL.md`.

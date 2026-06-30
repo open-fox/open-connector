@@ -273,8 +273,7 @@ export const gmailActions: ActionDefinition[] = [
   }),
   action({
     name: "get_profile",
-    description:
-      "Get the connected Gmail profile, including mailbox totals and the current historyId.",
+    description: "Get the connected Gmail profile, including mailbox totals and the current historyId.",
     requiredScopes: gmailReadScopes,
     properties: withUser(),
     outputSchema: s.object(
@@ -295,10 +294,7 @@ export const gmailActions: ActionDefinition[] = [
     description: "Send an email from the connected Gmail account.",
     requiredScopes: gmailSendScopes,
     properties: recipientFields(),
-    outputSchema: s.object(
-      { messageId },
-      { required: ["messageId"], description: "Sent message result." },
-    ),
+    outputSchema: s.object({ messageId }, { required: ["messageId"], description: "Sent message result." }),
   }),
   action({
     name: "reply_email",
@@ -306,10 +302,7 @@ export const gmailActions: ActionDefinition[] = [
     requiredScopes: gmailSendScopes,
     properties: { threadId, messageId, body: s.string({ description: "Reply body." }) },
     required: ["threadId", "messageId", "body"],
-    outputSchema: s.object(
-      { messageId },
-      { required: ["messageId"], description: "Reply result." },
-    ),
+    outputSchema: s.object({ messageId }, { required: ["messageId"], description: "Reply result." }),
   }),
   action({
     name: "reply_to_thread",
@@ -317,10 +310,7 @@ export const gmailActions: ActionDefinition[] = [
     requiredScopes: gmailSendScopes,
     properties: { threadId, ...recipientFields() },
     required: ["threadId"],
-    outputSchema: s.object(
-      { messageId, threadId },
-      { required: ["messageId"], description: "Thread reply result." },
-    ),
+    outputSchema: s.object({ messageId, threadId }, { required: ["messageId"], description: "Thread reply result." }),
   }),
   action({
     name: "create_draft",
@@ -333,20 +323,14 @@ export const gmailActions: ActionDefinition[] = [
       cc: s.union([s.string(), s.array(s.string())]),
     },
     required: ["to", "subject", "body"],
-    outputSchema: s.object(
-      { draftId },
-      { required: ["draftId"], description: "Created draft result." },
-    ),
+    outputSchema: s.object({ draftId }, { required: ["draftId"], description: "Created draft result." }),
   }),
   action({
     name: "create_email_draft",
     description: "Create a Gmail draft with recipients, subject, body, and optional threading.",
     requiredScopes: gmailComposeScopes,
     properties: { ...recipientFields(), threadId },
-    outputSchema: s.object(
-      { draftId, messageId, threadId },
-      { required: ["draftId"], description: "Created draft." },
-    ),
+    outputSchema: s.object({ draftId, messageId, threadId }, { required: ["draftId"], description: "Created draft." }),
   }),
   action({
     name: "list_drafts",
@@ -372,10 +356,7 @@ export const gmailActions: ActionDefinition[] = [
     requiredScopes: gmailComposeScopes,
     properties: { draftId, ...recipientFields(), threadId },
     required: ["draftId"],
-    outputSchema: s.object(
-      { draftId, messageId, threadId },
-      { required: ["draftId"], description: "Updated draft." },
-    ),
+    outputSchema: s.object({ draftId, messageId, threadId }, { required: ["draftId"], description: "Updated draft." }),
   }),
   action({
     name: "send_draft",
@@ -401,10 +382,7 @@ export const gmailActions: ActionDefinition[] = [
     description: "List all system and user-created Gmail labels.",
     requiredScopes: gmailLabelScopes,
     properties: withUser(),
-    outputSchema: s.object(
-      { labels: s.array(label) },
-      { required: ["labels"], description: "Label list." },
-    ),
+    outputSchema: s.object({ labels: s.array(label) }, { required: ["labels"], description: "Label list." }),
   }),
   action({
     name: "get_label",
@@ -548,10 +526,7 @@ export const gmailActions: ActionDefinition[] = [
     description: "List Gmail filters for the mailbox.",
     requiredScopes: gmailSettingsBasicScopes,
     properties: withUser(),
-    outputSchema: s.object(
-      { filters: s.array(filter) },
-      { required: ["filters"], description: "Filter list." },
-    ),
+    outputSchema: s.object({ filters: s.array(filter) }, { required: ["filters"], description: "Filter list." }),
   }),
   action({
     name: "get_filter",

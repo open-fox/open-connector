@@ -1,15 +1,13 @@
-import type { CatalogStore } from "../catalog-store.ts";
-import type {
-  ActionExecutor,
-  CredentialValidators,
-  ProviderDefinition,
-  ResolvedCredential,
-} from "../core/types.ts";
-import type { IProviderLoader } from "../providers/provider-loader.ts";
 import type { IConnectionStore } from "./connection-service.ts";
+import type { ActionExecutor, CredentialValidators, ProviderDefinition, ResolvedCredential } from "./core/types.ts";
+import type { OAuthClientConfig } from "./oauth/oauth-client-config-service.ts";
+import type { IProviderLoader } from "./providers/provider-loader.ts";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createCatalogStore } from "./catalog-store.ts";
 import { ConnectionService } from "./connection-service.ts";
+import { OAuthClientConfigService } from "./oauth/oauth-client-config-service.ts";
+import { OAuthCredentialRefreshService } from "./oauth/oauth-credential-refresh-service.ts";
 
 const hackernewsProvider: ProviderDefinition = {
   service: "hackernews",
@@ -71,6 +69,28 @@ const customCredentialProvider: ProviderDefinition = {
   ],
   actions: [],
 };
+
+const oauthProvider: ProviderDefinition = {
+  service: "example",
+  displayName: "Example",
+  categories: ["Developer Tools"],
+  authTypes: ["oauth2"],
+  auth: [
+    {
+      type: "oauth2",
+      authorizationUrl: "https://example.com/oauth/authorize",
+      tokenUrl: "https://example.com/oauth/token",
+      scopes: ["read"],
+      redirectPath: "/oauth/callback/example",
+      tokenEndpointAuthMethod: "client_secret_post",
+    },
+  ],
+  actions: [],
+};
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("ConnectionService", () => {
   it("exposes no_auth providers as virtual connections", async () => {
@@ -182,7 +202,9 @@ describe("ConnectionService", () => {
         return { metadata: { checked: true } };
       },
     };
-    const service = createService([apiKeyProvider], new FakeProviderLoader(validators));
+    const service = createService([apiKeyProvider], {
+      providerLoader: new FakeProviderLoader(validators),
+    });
 
     await expect(
       service.connectWithApiKey("uptimerobot", {
@@ -209,22 +231,100 @@ describe("ConnectionService", () => {
       metadata: { checked: true },
     });
   });
+
+  it("refreshes expired OAuth credentials before returning them", async () => {
+    const store = new MemoryConnectionStore();
+    const oauthClientConfigs = createOAuthClientConfigs([oauthProvider]);
+    const service = createService([oauthProvider], {
+      oauthCredentials: new OAuthCredentialRefreshService(oauthClientConfigs),
+      store,
+    });
+    await oauthClientConfigs.upsertConfig({
+      service: "example",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+    });
+    await store.set("example", {
+      authType: "oauth2",
+      accessToken: "expired-token",
+      tokenType: "Bearer",
+      refreshToken: "refresh-token",
+      expiresAt: "2026-01-01T00:00:00.000Z",
+      metadata: { original: true },
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          access_token: "fresh-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+          scope: "read",
+        }),
+      ),
+    );
+
+    await expect(service.getCredential("example")).resolves.toMatchObject({
+      authType: "oauth2",
+      accessToken: "fresh-token",
+      refreshToken: "refresh-token",
+      metadata: {
+        original: true,
+        scope: "read",
+      },
+    });
+    await expect(store.get("example")).resolves.toMatchObject({
+      authType: "oauth2",
+      accessToken: "fresh-token",
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://example.com/oauth/token",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+  });
+
+  it("asks users to reconnect when an expired OAuth credential has no refresh token", async () => {
+    const store = new MemoryConnectionStore();
+    const service = createService([oauthProvider], { store });
+    await store.set("example", {
+      authType: "oauth2",
+      accessToken: "expired-token",
+      tokenType: "Bearer",
+      expiresAt: "2026-01-01T00:00:00.000Z",
+      metadata: {},
+    });
+
+    await expect(service.getCredential("example")).rejects.toMatchObject({
+      code: "oauth_token_expired",
+    });
+  });
 });
 
-function createService(
-  providers: ProviderDefinition[],
-  providerLoader: IProviderLoader = new FakeProviderLoader(),
-): ConnectionService {
-  const catalog: CatalogStore = {
-    providers,
-    actions: [],
-    actionsById: new Map(),
-  };
+interface CreateServiceOptions {
+  oauthCredentials?: OAuthCredentialRefreshService;
+  providerLoader?: IProviderLoader;
+  store?: MemoryConnectionStore;
+}
+
+function createService(providers: ProviderDefinition[], options: CreateServiceOptions = {}): ConnectionService {
+  const catalog = createCatalogStore(providers);
 
   return new ConnectionService({
     catalog,
-    providerLoader,
-    store: new MemoryConnectionStore(),
+    oauthCredentials: options.oauthCredentials,
+    providerLoader: options.providerLoader ?? new FakeProviderLoader(),
+    store: options.store ?? new MemoryConnectionStore(),
+  });
+}
+
+function createOAuthClientConfigs(providers: ProviderDefinition[]): OAuthClientConfigService {
+  return new OAuthClientConfigService({
+    catalog: createCatalogStore(providers),
+    origin: "http://localhost:3000",
+    store: new MemoryOAuthClientConfigStore(),
   });
 }
 
@@ -235,10 +335,7 @@ class FakeProviderLoader implements IProviderLoader {
     this.validators = validators;
   }
 
-  async loadActionExecutor(
-    _service: string,
-    _actionId: string,
-  ): Promise<ActionExecutor | undefined> {
+  async loadActionExecutor(_service: string, _actionId: string): Promise<ActionExecutor | undefined> {
     return undefined;
   }
 
@@ -267,5 +364,25 @@ class MemoryConnectionStore implements IConnectionStore {
       service,
       credential,
     }));
+  }
+}
+
+class MemoryOAuthClientConfigStore {
+  private readonly configs = new Map<string, OAuthClientConfig>();
+
+  async get(service: string): Promise<OAuthClientConfig | undefined> {
+    return this.configs.get(service);
+  }
+
+  async set(config: OAuthClientConfig): Promise<void> {
+    this.configs.set(config.service, config);
+  }
+
+  async delete(service: string): Promise<void> {
+    this.configs.delete(service);
+  }
+
+  async list(): Promise<OAuthClientConfig[]> {
+    return [...this.configs.values()];
   }
 }

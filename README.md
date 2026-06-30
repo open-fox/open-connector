@@ -13,8 +13,11 @@ execution boundary.
 
 - Local app and action catalog browsing
 - Local credential configuration
+- SQLite-backed local runtime storage
 - Action execution through HTTP
 - MCP endpoint and tool metadata for agents
+- Optional bearer-token gate for local HTTP and MCP access
+- Optional action allow/block policy for agent execution
 - OpenAPI reference at `/docs`
 - A Vite local console under `web/`
 - Provider definitions that can be catalog-only or locally executable
@@ -55,6 +58,14 @@ Then open:
 ```text
 http://localhost:3000
 ```
+
+Runtime state is stored in `./data/connect.sqlite` by default. Use `OOMOL_CONNECT_DATA_DIR` to point
+the local database somewhere else.
+
+Set `OOMOL_CONNECT_ENCRYPTION_KEY` to encrypt stored credentials and OAuth client secrets.
+Set `OOMOL_CONNECT_API_TOKEN` to require `Authorization: Bearer <token>` for API and MCP requests.
+Use `OOMOL_CONNECT_ALLOWED_ACTIONS` and `OOMOL_CONNECT_BLOCKED_ACTIONS` to constrain which actions
+agents can execute.
 
 ## Project Layout
 
@@ -136,6 +147,7 @@ forms, and provider definitions stay aligned.
 ## Documentation
 
 - [Quickstart](docs/quickstart.md)
+- [Configuration](docs/configuration.md)
 - [Catalog format](docs/catalog-format.md)
 - [Credentials](docs/credentials.md)
 - [Verification language](docs/verification.md)

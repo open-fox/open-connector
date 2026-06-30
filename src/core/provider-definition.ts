@@ -21,10 +21,7 @@ export type DefineProviderActionInput = {
  * Provider modules use this helper so definitions read as business action
  * declarations instead of generated catalog JSON.
  */
-export function defineProviderAction(
-  service: string,
-  input: DefineProviderActionInput,
-): ActionDefinition {
+export function defineProviderAction(service: string, input: DefineProviderActionInput): ActionDefinition {
   return {
     id: `${service}.${input.name}`,
     service,

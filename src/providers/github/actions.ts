@@ -2,12 +2,7 @@ import type { ActionDefinition, JsonSchema } from "../../core/types.ts";
 
 import { s } from "../../core/json-schema.ts";
 import { defineProviderAction } from "../../core/provider-definition.ts";
-import {
-  githubDeleteRepoScopes,
-  githubRepoScopes,
-  githubUserReadScopes,
-  githubWorkflowScopes,
-} from "./scopes.ts";
+import { githubDeleteRepoScopes, githubRepoScopes, githubUserReadScopes, githubWorkflowScopes } from "./scopes.ts";
 
 const service = "github";
 
@@ -291,10 +286,7 @@ const githubReviewCommentInputSchema = s.object({
   startLine: s.integer({ minimum: 1 }),
   startSide: s.stringEnum(["LEFT", "RIGHT"]),
 });
-const githubReviewCommentInputProperties = githubReviewCommentInputSchema.properties as Record<
-  string,
-  JsonSchema
->;
+const githubReviewCommentInputProperties = githubReviewCommentInputSchema.properties as Record<string, JsonSchema>;
 
 const githubPullRequestRequestedReviewersSchema = s.object({
   pull_request: githubPullRequestSchema,
@@ -560,8 +552,7 @@ export const githubActions: ActionDefinition[] = [
   }),
   action({
     name: "list_commits",
-    description:
-      "List commits in a GitHub repository with optional branch, path, author, and date filters.",
+    description: "List commits in a GitHub repository with optional branch, path, author, and date filters.",
     requiredScopes: githubRepoScopes,
     inputSchema: s.object({
       owner: nonEmptyString,
@@ -621,8 +612,7 @@ export const githubActions: ActionDefinition[] = [
   }),
   action({
     name: "list_repository_issues",
-    description:
-      "List issues for a GitHub repository. Pull requests are filtered out from the response.",
+    description: "List issues for a GitHub repository. Pull requests are filtered out from the response.",
     requiredScopes: githubRepoScopes,
     inputSchema: s.object({
       owner: nonEmptyString,
@@ -1083,8 +1073,7 @@ export const githubActions: ActionDefinition[] = [
   }),
   action({
     name: "update_pull_request",
-    description:
-      "Update a GitHub pull request title, body, state, base branch, or maintainer-can-modify flag.",
+    description: "Update a GitHub pull request title, body, state, base branch, or maintainer-can-modify flag.",
     requiredScopes: githubRepoScopes,
     inputSchema: s.object({
       owner: nonEmptyString,
@@ -1509,8 +1498,7 @@ export const githubActions: ActionDefinition[] = [
   }),
   action({
     name: "list_directory_contents",
-    description:
-      "List entries under a repository directory path. Empty path means repository root.",
+    description: "List entries under a repository directory path. Empty path means repository root.",
     requiredScopes: githubRepoScopes,
     inputSchema: s.object({
       owner: nonEmptyString,
@@ -1701,13 +1689,15 @@ export const githubActions: ActionDefinition[] = [
   }),
 ];
 
-function action(input: {
+interface GitHubActionInput {
   name: string;
   description: string;
   requiredScopes: string[];
   inputSchema: JsonSchema;
   outputSchema: JsonSchema;
-}): ActionDefinition {
+}
+
+function action(input: GitHubActionInput): ActionDefinition {
   return defineProviderAction(service, {
     ...input,
     inputSchema: withRequiredFields(input.inputSchema, githubRequiredInputFields[input.name]),

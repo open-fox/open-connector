@@ -22,19 +22,13 @@ export function allActions(providers: ProviderDefinition[]): ActionDefinition[] 
 /**
  * Find one provider by service id.
  */
-export function findProvider(
-  providers: ProviderDefinition[],
-  service: string,
-): ProviderDefinition | undefined {
+export function findProvider(providers: ProviderDefinition[], service: string): ProviderDefinition | undefined {
   return providers.find((provider) => provider.service === service);
 }
 
 /**
  * Find one action by globally unique action id.
  */
-export function findAction(
-  providers: ProviderDefinition[],
-  actionId: string,
-): ActionDefinition | undefined {
+export function findAction(providers: ProviderDefinition[], actionId: string): ActionDefinition | undefined {
   return allActions(providers).find((action) => action.id === actionId);
 }

@@ -15,9 +15,7 @@ const existingEntries = await readdir(outputDir, { withFileTypes: true });
 
 await Promise.all(
   existingEntries
-    .filter(
-      (entry) => entry.isFile() && entry.name.endsWith(".json") && !appFileNames.has(entry.name),
-    )
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json") && !appFileNames.has(entry.name))
     .map((entry) => rm(join(outputDir, entry.name))),
 );
 
@@ -25,9 +23,7 @@ for (const app of apps) {
   await writeFile(join(outputDir, `${app.service}.json`), `${JSON.stringify(app, null, 2)}\n`);
 }
 
-console.log(
-  `Generated ${apps.length} apps and ${apps.reduce((sum, app) => sum + app.actions.length, 0)} actions.`,
-);
+console.log(`Generated ${apps.length} apps and ${apps.reduce((sum, app) => sum + app.actions.length, 0)} actions.`);
 
 async function loadProviderDefinitions(): Promise<ProviderDefinition[]> {
   const providersDir = join(process.cwd(), "src/providers");
@@ -39,14 +35,12 @@ async function loadProviderDefinitions(): Promise<ProviderDefinition[]> {
 
   return Promise.all(
     services.map(async (service): Promise<ProviderDefinition> => {
-      const module = (await import(
-        `../src/providers/${service}/definition.ts`
-      )) as ProviderDefinitionModule;
+      const module = (await import(`../src/providers/${service}/definition.ts`)) as ProviderDefinitionModule;
       return module.provider;
     }),
   );
 }
 
-type ProviderDefinitionModule = {
+interface ProviderDefinitionModule {
   provider: ProviderDefinition;
-};
+}

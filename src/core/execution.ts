@@ -1,9 +1,5 @@
-import type {
-  ActionDefinition,
-  ActionExecutor,
-  ExecutionContext,
-  ExecutionResult,
-} from "./types.ts";
+import type { ActionPolicyService } from "./action-policy.ts";
+import type { ActionDefinition, ActionExecutor, ExecutionContext, ExecutionResult } from "./types.ts";
 
 import { validateActionInput } from "./validation.ts";
 
@@ -18,7 +14,19 @@ export async function executeAction(
   executor: ActionExecutor | undefined,
   input: unknown,
   context: ExecutionContext,
+  policy?: ActionPolicyService,
 ): Promise<ExecutionResult> {
+  const decision = policy?.evaluate(action);
+  if (decision && !decision.allowed) {
+    return {
+      ok: false,
+      error: {
+        code: decision.code,
+        message: decision.message,
+      },
+    };
+  }
+
   const validation = validateActionInput(action, input);
   if (!validation.valid) {
     return {

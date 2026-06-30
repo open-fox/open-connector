@@ -1,19 +1,23 @@
 // OpenAI function calling docs: https://platform.openai.com/docs/guides/function-calling
 
-type CatalogAction = {
+import { localHeaders } from "../local-http/client.ts";
+
+interface CatalogAction {
   id: string;
   description: string;
   inputSchema: unknown;
-};
+}
 
-type OpenAiFunctionTool = {
+interface OpenAiFunctionTool {
   type: "function";
   name: string;
   description: string;
   parameters: unknown;
-};
+}
 
-const actionsResponse = await fetch("http://localhost:3000/api/actions");
+const actionsResponse = await fetch("http://localhost:3000/api/actions", {
+  headers: localHeaders(),
+});
 const actions = (await actionsResponse.json()) as CatalogAction[];
 const tools: OpenAiFunctionTool[] = actions.map((action) => ({
   type: "function",

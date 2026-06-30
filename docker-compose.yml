@@ -7,6 +7,8 @@ services:
       - "3000:3000"
     volumes:
       - connector-data:/app/data
+    environment:
+      OOMOL_CONNECT_DATA_DIR: /app/data
 
 volumes:
   connector-data:

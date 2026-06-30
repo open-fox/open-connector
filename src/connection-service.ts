@@ -1,4 +1,4 @@
-import type { CatalogStore } from "../catalog-store.ts";
+import type { CatalogStore } from "./catalog-store.ts";
 import type {
   ApiKeyAuthDefinition,
   AuthType,
@@ -6,10 +6,11 @@ import type {
   CustomCredentialAuthDefinition,
   ProviderDefinition,
   ResolvedCredential,
-} from "../core/types.ts";
-import type { IProviderLoader } from "../providers/provider-loader.ts";
+} from "./core/types.ts";
+import type { IOAuthCredentialRefresher } from "./oauth/oauth-credential-refresh-service.ts";
+import type { IProviderLoader } from "./providers/provider-loader.ts";
 
-import { normalizeCredentialValues } from "../core/credential-fields.ts";
+import { normalizeCredentialValues } from "./core/credential-fields.ts";
 
 /**
  * Connection summary returned to the local console.
@@ -46,15 +47,18 @@ export interface IConnectionStore {
  */
 export class ConnectionService {
   private readonly catalog: CatalogStore;
+  private readonly oauthCredentials?: IOAuthCredentialRefresher;
   private readonly providerLoader: IProviderLoader;
   private readonly store: IConnectionStore;
 
   constructor(input: {
     catalog: CatalogStore;
+    oauthCredentials?: IOAuthCredentialRefresher;
     providerLoader: IProviderLoader;
     store: IConnectionStore;
   }) {
     this.catalog = input.catalog;
+    this.oauthCredentials = input.oauthCredentials;
     this.providerLoader = input.providerLoader;
     this.store = input.store;
   }
@@ -73,7 +77,7 @@ export class ConnectionService {
     const provider = this.getProvider(service);
     const stored = await this.store.get(service);
     if (stored) {
-      return stored;
+      return stored.authType === "oauth2" ? await this.resolveOAuthCredential(service, stored) : stored;
     }
 
     return this.supportsAuth(provider, "no_auth") ? { authType: "no_auth" } : undefined;
@@ -93,10 +97,7 @@ export class ConnectionService {
     };
   }
 
-  async connectWithApiKey(
-    service: string,
-    input: ConnectWithCredentialInput,
-  ): Promise<ConnectionSummary> {
+  async connectWithApiKey(service: string, input: ConnectWithCredentialInput): Promise<ConnectionSummary> {
     const provider = this.getProvider(service);
     if (!this.supportsAuth(provider, "api_key")) {
       throw new ConnectionError("unsupported_auth_type", `${service} does not support api_key.`);
@@ -126,16 +127,10 @@ export class ConnectionService {
     };
   }
 
-  async connectWithCustomCredential(
-    service: string,
-    input: ConnectWithCredentialInput,
-  ): Promise<ConnectionSummary> {
+  async connectWithCustomCredential(service: string, input: ConnectWithCredentialInput): Promise<ConnectionSummary> {
     const provider = this.getProvider(service);
     if (!this.supportsAuth(provider, "custom_credential")) {
-      throw new ConnectionError(
-        "unsupported_auth_type",
-        `${service} does not support custom_credential.`,
-      );
+      throw new ConnectionError("unsupported_auth_type", `${service} does not support custom_credential.`);
     }
 
     const auth = this.getCustomCredentialDefinition(provider);
@@ -183,9 +178,7 @@ export class ConnectionService {
     };
   }
 
-  async disconnect(
-    service: string,
-  ): Promise<ConnectionSummary | { service: string; configured: false }> {
+  async disconnect(service: string): Promise<ConnectionSummary | { service: string; configured: false }> {
     await this.store.delete(service);
     const provider = this.catalog.providers.find((provider) => provider.service === service);
     if (provider && this.supportsAuth(provider, "no_auth")) {
@@ -236,24 +229,16 @@ export class ConnectionService {
   private getApiKeyDefinition(provider: ProviderDefinition): ApiKeyAuthDefinition {
     const auth = provider.auth.find((auth) => auth.type === "api_key");
     if (!auth || auth.type !== "api_key") {
-      throw new ConnectionError(
-        "unsupported_auth_type",
-        `${provider.service} does not support api_key.`,
-      );
+      throw new ConnectionError("unsupported_auth_type", `${provider.service} does not support api_key.`);
     }
 
     return auth;
   }
 
-  private getCustomCredentialDefinition(
-    provider: ProviderDefinition,
-  ): CustomCredentialAuthDefinition {
+  private getCustomCredentialDefinition(provider: ProviderDefinition): CustomCredentialAuthDefinition {
     const auth = provider.auth.find((auth) => auth.type === "custom_credential");
     if (!auth || auth.type !== "custom_credential") {
-      throw new ConnectionError(
-        "unsupported_auth_type",
-        `${provider.service} does not support custom_credential.`,
-      );
+      throw new ConnectionError("unsupported_auth_type", `${provider.service} does not support custom_credential.`);
     }
 
     return auth;
@@ -264,9 +249,7 @@ export class ConnectionService {
     input: { apiKey: string; values: Record<string, string> },
   ): Promise<Record<string, unknown>> {
     const validators = await this.providerLoader.loadCredentialValidators(service);
-    return this.runCredentialValidator(service, () =>
-      validators?.apiKey?.(input, { fetcher: fetch }),
-    );
+    return this.runCredentialValidator(service, () => validators?.apiKey?.(input, { fetcher: fetch }));
   }
 
   private async validateCustomCredential(
@@ -274,9 +257,7 @@ export class ConnectionService {
     input: { values: Record<string, string> },
   ): Promise<Record<string, unknown>> {
     const validators = await this.providerLoader.loadCredentialValidators(service);
-    return this.runCredentialValidator(service, () =>
-      validators?.customCredential?.(input, { fetcher: fetch }),
-    );
+    return this.runCredentialValidator(service, () => validators?.customCredential?.(input, { fetcher: fetch }));
   }
 
   private async validateOAuthCredential(
@@ -284,9 +265,34 @@ export class ConnectionService {
     credential: Extract<ResolvedCredential, { authType: "oauth2" }>,
   ): Promise<Record<string, unknown>> {
     const validators = await this.providerLoader.loadCredentialValidators(service);
-    return this.runCredentialValidator(service, () =>
-      validators?.oauth2?.(credential, { fetcher: fetch }),
-    );
+    return this.runCredentialValidator(service, () => validators?.oauth2?.(credential, { fetcher: fetch }));
+  }
+
+  private async resolveOAuthCredential(
+    service: string,
+    credential: Extract<ResolvedCredential, { authType: "oauth2" }>,
+  ): Promise<Extract<ResolvedCredential, { authType: "oauth2" }>> {
+    if (!isOAuthCredentialExpired(credential)) {
+      return credential;
+    }
+
+    if (!credential.refreshToken) {
+      throw new ConnectionError(
+        "oauth_token_expired",
+        `${service} OAuth access token expired and no refresh token is available. Reconnect ${service}.`,
+      );
+    }
+
+    if (!this.oauthCredentials) {
+      throw new ConnectionError(
+        "oauth_refresh_unavailable",
+        `${service} OAuth access token expired and this runtime cannot refresh it.`,
+      );
+    }
+
+    const nextCredential = await this.oauthCredentials.refresh(service, credential);
+    await this.store.set(service, nextCredential);
+    return nextCredential;
   }
 
   private async runCredentialValidator(
@@ -302,6 +308,15 @@ export class ConnectionService {
       );
     }
   }
+}
+
+function isOAuthCredentialExpired(credential: Extract<ResolvedCredential, { authType: "oauth2" }>): boolean {
+  if (!credential.expiresAt) {
+    return false;
+  }
+
+  const expiresAt = Date.parse(credential.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now() + 60_000;
 }
 
 function createApiKeyFields(auth: ApiKeyAuthDefinition): CredentialDefinition[] {

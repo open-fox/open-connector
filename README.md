@@ -40,13 +40,15 @@ definitions and executors.
 
 OpenConnector is designed for products where agents need to act inside the SaaS tools customers
 already use, while keeping credentials, scopes, schemas, and execution logs in a controlled runtime.
+The hosted, private, and self-hosted paths use compatible connector interfaces, so teams can move
+deployment boundaries over time without rewriting the app-facing integration layer.
 
 - Agent products that need a reusable connector layer across work apps, developer tools, data
   systems, communication platforms, and AI services.
 - SaaS products that want to add agent workflows without turning every external API into a custom
   integration project.
-- Teams that need a portable path from local development to Cloudflare-compatible, hosted, private,
-  or self-hosted deployment.
+- Teams that want to start hosted for speed while preserving a clear path to private or self-hosted
+  infrastructure later.
 
 ## Developer Tools
 
@@ -90,11 +92,11 @@ safe account labels, and execution results they need.
 
 ## Usage Paths
 
-| Path                         | Best for                                            | What you get                                                                                                       |
-| ---------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| OSS self-host                | Developers and teams that want full control         | Local Docker or Node runtime, SQLite storage, MCP, HTTP, OpenAPI, and Web Console                                  |
-| Cloudflare-compatible deploy | Teams that want a lightweight hosted runtime        | Workers runtime, D1 state, R2 transit files, and Static Assets for the console                                     |
-| [oomol](https://oomol.com/)  | Teams blocked by OAuth approval or launch deadlines | Hosted auth, runtime, and 1,000+ provider catalog, with room to migrate later to private or self-hosted deployment |
+| Path                         | Best for                                            | What you get                                                                                                              |
+| ---------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| OSS self-host                | Developers and teams that want full control         | Local Docker or Node runtime, SQLite storage, MCP, HTTP, OpenAPI, and Web Console                                         |
+| Cloudflare-compatible deploy | Teams that want a lightweight hosted runtime        | Workers runtime, D1 state, R2 transit files, and Static Assets for the console                                            |
+| [oomol](https://oomol.com/)  | Teams blocked by OAuth approval or launch deadlines | Hosted auth, runtime, and 1,000+ provider catalog, with compatible interfaces for later private or self-hosted deployment |
 
 ## Cloudflare Quick Start Video
 

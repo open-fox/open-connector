@@ -248,17 +248,22 @@ describe("ConnectServer", () => {
   });
 
   it("does not serve static fallback responses for missing v1 routes", async () => {
-    const app = createTestServer([apiKeyProvider]).createApp();
+    const staticRoot = await createTestStaticRoot();
+    try {
+      const app = createTestServer([apiKeyProvider], { staticRoot }).createApp();
 
-    const response = await app.request("/v1/does-not-exist");
+      const response = await app.request("/v1/does-not-exist");
 
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        code: "not_found",
-        message: "Not found.",
-      },
-    });
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: "not_found",
+          message: "Not found.",
+        },
+      });
+    } finally {
+      await rm(staticRoot, { recursive: true, force: true });
+    }
   });
 
   it("accepts OAuth client secret extra fields", async () => {
@@ -1457,7 +1462,7 @@ function createTestServer(providers: ProviderDefinition[], options: CreateTestSe
     actionPolicy: options.actionPolicy,
     logger: options.logger,
   });
-  const staticRoot = options.staticRoot === false ? undefined : (options.staticRoot ?? ".tmp/test-static");
+  const staticRoot = typeof options.staticRoot === "string" ? options.staticRoot : undefined;
 
   return new ConnectServer({
     catalog,

@@ -8,8 +8,11 @@
 ![MCP](https://img.shields.io/badge/MCP-ready-111827)
 ![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539)
 
-OpenConnector is an open-source auth gateway that connects 643+ providers, supports
-Cloudflare-compatible deployment, and provides 6,680 prebuilt Actions that AI agents can call
+[![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fconnector.oomol.com%2Fv1%2Fcatalog&query=data.providerCount&label=Providers&color=%237d7fe9)](https://oomol.com/apps)
+[![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fconnector.oomol.com%2Fv1%2Fcatalog&query=data.actionCount&label=Actions&color=%237d7fe9)](https://oomol.com/apps)
+
+OpenConnector is an open-source auth gateway that connects 800+ providers, supports
+Cloudflare-compatible deployment, and provides 8,000+ prebuilt Actions that AI agents can call
 directly through the [Connector SDK](https://github.com/oomol-lab/connector-sdk),
 MCP, and HTTP.
 
@@ -20,7 +23,7 @@ from scratch.
 
 This repository is the open-source migration of oomol's broader connector catalog. The commercial
 SaaS version already supports 1,000+ SaaS providers; the open-source catalog currently includes
-643+ providers and is expanding as we migrate more integrations into maintainable open-source
+800+ providers and is expanding as we migrate more integrations into maintainable open-source
 provider definitions and executors.
 
 [oo CLI](https://github.com/oomol-lab/oo-cli) support for the open-source runtime is in the same
@@ -29,7 +32,7 @@ SDK, MCP, HTTP API, OpenAPI, and local Web Console paths below.
 
 ## Why OpenConnector
 
-- [643+ providers and 6,680 prebuilt Actions](docs/providers.md) across SaaS products such as
+- [800+ providers and 8,000+ prebuilt Actions](docs/providers.md) across SaaS products such as
   GitHub, Gmail, Notion, BigQuery, Google Analytics, Supabase, Airtable, Slack, and more.
 - Open-source auth gateway for API keys, OAuth2, custom credentials, and no-auth providers.
 - Open-source Action layer with prebuilt request/response schemas and lazy-loaded executors.
@@ -66,7 +69,7 @@ deployment boundaries over time without rewriting the app-facing integration lay
 
 ## Connected SaaS Logo Wall
 
-OpenConnector currently supports 643+ providers and 6,680 prebuilt Actions. This logo wall is only a
+OpenConnector currently supports 800+ providers and 8,000+ prebuilt Actions. This logo wall is only a
 partial preview, not the full catalog. It highlights recognizable SaaS, developer tools,
 productivity apps, analytics products, and AI services so readers can immediately see that
 OpenConnector reaches far more than the logos shown here.
@@ -86,7 +89,7 @@ flowchart LR
   Gateway --> Actions["Open-source Action Executors"]
   Gateway --> Policy["Tokens, Scopes, Allow/Block Policy"]
   Gateway --> Logs["Run Logs"]
-  Actions --> SaaS["643+ Providers"]
+  Actions --> SaaS["800+ Providers"]
   Console["Web Console"] --> Gateway
   Cloudflare["Cloudflare Workers, D1, R2"] -. deploy .-> Gateway
 ```

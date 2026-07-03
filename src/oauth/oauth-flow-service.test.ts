@@ -513,10 +513,13 @@ describe("OAuthFlowService", () => {
       },
     });
 
-    await expect(services.flow.startAuthorization({ service: "base_url_oauth" })).rejects.toMatchObject({
-      code: "invalid_input",
-      message: "OAuth endpoint URL must not target local hosts",
-    });
+    await expect(services.flow.startAuthorization({ service: "base_url_oauth" })).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "invalid_input" &&
+        error.message === "OAuth endpoint URL must not target private or reserved IP addresses",
+    );
   });
 });
 

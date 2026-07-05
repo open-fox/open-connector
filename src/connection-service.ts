@@ -13,6 +13,7 @@ import type { IOAuthCredentialRefresher } from "./oauth/oauth-credential-refresh
 import type { IProviderLoader } from "./providers/provider-loader.ts";
 
 import { normalizeCredentialValues } from "./core/credential-fields.ts";
+import { defaultProviderFetch } from "./providers/provider-runtime.ts";
 
 export const defaultConnectionName = "default";
 
@@ -389,7 +390,7 @@ export class ConnectionService {
     input: ApiKeyCredentialValidationInput,
   ): Promise<CredentialValidationResult> {
     const validators = await this.providerLoader.loadCredentialValidators(service);
-    return this.runCredentialValidator(service, () => validators?.apiKey?.(input, { fetcher: fetch }));
+    return this.runCredentialValidator(service, () => validators?.apiKey?.(input, { fetcher: defaultProviderFetch }));
   }
 
   private async validateCustomCredential(
@@ -397,7 +398,9 @@ export class ConnectionService {
     input: CustomCredentialValidationInput,
   ): Promise<CredentialValidationResult> {
     const validators = await this.providerLoader.loadCredentialValidators(service);
-    return this.runCredentialValidator(service, () => validators?.customCredential?.(input, { fetcher: fetch }));
+    return this.runCredentialValidator(service, () =>
+      validators?.customCredential?.(input, { fetcher: defaultProviderFetch }),
+    );
   }
 
   private async validateOAuthCredential(
@@ -405,7 +408,9 @@ export class ConnectionService {
     credential: Extract<ResolvedCredential, { authType: "oauth2" }>,
   ): Promise<CredentialValidationResult> {
     const validators = await this.providerLoader.loadCredentialValidators(service);
-    return this.runCredentialValidator(service, () => validators?.oauth2?.(credential, { fetcher: fetch }));
+    return this.runCredentialValidator(service, () =>
+      validators?.oauth2?.(credential, { fetcher: defaultProviderFetch }),
+    );
   }
 
   private async resolveOAuthCredential(

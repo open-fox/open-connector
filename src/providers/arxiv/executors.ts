@@ -1,7 +1,7 @@
 import type { ExecutionContext, ProviderExecutors } from "../../core/types.ts";
 import type { ArxivActionName } from "./actions.ts";
 
-import { defineProviderExecutors, ProviderRequestError } from "../provider-runtime.ts";
+import { defineProviderExecutors, isDefaultProviderFetch, ProviderRequestError } from "../provider-runtime.ts";
 
 const service = "arxiv";
 const arxivApiBaseUrl = "https://export.arxiv.org/api";
@@ -272,7 +272,7 @@ async function requestArxiv(options: QueryOptions, fetcher: typeof fetch): Promi
 }
 
 function throttleDefaultFetch(fetcher: typeof fetch): Promise<void> {
-  if (fetcher !== fetch) {
+  if (!isDefaultProviderFetch(fetcher)) {
     return Promise.resolve();
   }
 

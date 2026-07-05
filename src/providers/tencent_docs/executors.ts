@@ -7,7 +7,7 @@ import type {
 } from "../../core/types.ts";
 
 import { optionalRecord, optionalString } from "../../core/cast.ts";
-import { ProviderRequestError, toProviderExecutionError } from "../provider-runtime.ts";
+import { defaultProviderFetch, ProviderRequestError, toProviderExecutionError } from "../provider-runtime.ts";
 import { tencentDocsActionHandlers } from "./runtime.ts";
 
 const service = "tencent_docs";
@@ -42,7 +42,7 @@ export const executors: ProviderExecutors = Object.fromEntries(
             accessToken: credential.accessToken,
             clientId: clientId ?? "",
             openID: openID ?? "",
-            fetcher: fetch,
+            fetcher: defaultProviderFetch,
             signal: context.signal,
           }),
         };

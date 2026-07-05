@@ -1,9 +1,49 @@
 import type { TransitFileRead, TransitFileWriter } from "../core/types.ts";
 
-import { describe, expect, it } from "vitest";
-import { ProviderRequestError, uploadProviderUrlToTransitFile } from "./provider-runtime.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { defineProviderExecutors, ProviderRequestError, uploadProviderUrlToTransitFile } from "./provider-runtime.ts";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("provider runtime file helpers", () => {
+  it("uses a Worker-safe default fetcher for provider executors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(function (this: unknown) {
+        if (this !== globalThis) {
+          throw new TypeError("Illegal invocation: function called with incorrect `this` reference.");
+        }
+        return Promise.resolve(Response.json({ ok: true }));
+      }) as typeof fetch,
+    );
+    const executors = defineProviderExecutors<{ fetcher: typeof fetch }>({
+      service: "example",
+      handlers: {
+        async ping(_input, context) {
+          const response = await context.fetcher("https://provider.example/ping");
+          return response.json();
+        },
+      },
+      createContext(_context, fetcher) {
+        return { fetcher };
+      },
+    });
+
+    await expect(
+      executors["example.ping"]?.(
+        {},
+        {
+          getCredential: async () => undefined,
+        },
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      output: { ok: true },
+    });
+  });
+
   it("bounds provider URL downloads before creating transit files", async () => {
     const transitFiles = new MemoryTransitFiles(4);
 

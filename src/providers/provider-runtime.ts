@@ -16,9 +16,21 @@ import { readBoundedResponseBytes } from "../core/request.ts";
 export type ProviderFetch = typeof fetch;
 
 /**
+ * Default provider fetch that keeps Worker runtimes' global `fetch` receiver.
+ */
+export const defaultProviderFetch: ProviderFetch = (input, init) => globalThis.fetch(input, init);
+
+/**
  * Default User-Agent sent by local provider executors.
  */
 export const providerUserAgent = "oomol-connect/0.1";
+
+/**
+ * Return whether a fetcher is the shared runtime default.
+ */
+export function isDefaultProviderFetch(fetcher: ProviderFetch): boolean {
+  return fetcher === defaultProviderFetch;
+}
 
 /**
  * Provider-native handler shape. The provider owns `TContext`; the shared
@@ -308,7 +320,7 @@ export function defineProviderExecutors<TContext>(input: ProviderExecutorDefinit
           ok: true,
           output: await handler(
             actionInput as Record<string, unknown>,
-            await input.createContext(executionContext, fetch),
+            await input.createContext(executionContext, defaultProviderFetch),
           ),
         };
       } catch (error) {

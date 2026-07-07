@@ -174,18 +174,11 @@ export class D1RuntimeTokenStore implements IRuntimeTokenStore {
     await this.database
       .prepare(
         `
-        insert into runtime_tokens (id, name, token_hash, created_at, last_used_at, revoked_at)
-        values (?, ?, ?, ?, ?, ?)
+        insert into runtime_tokens (id, name, token_hash, created_at, last_used_at)
+        values (?, ?, ?, ?, ?)
       `,
       )
-      .bind(
-        record.id,
-        record.name,
-        record.tokenHash,
-        record.createdAt,
-        record.lastUsedAt ?? null,
-        record.revokedAt ?? null,
-      )
+      .bind(record.id, record.name, record.tokenHash, record.createdAt, record.lastUsedAt ?? null)
       .run();
   }
 
@@ -193,8 +186,9 @@ export class D1RuntimeTokenStore implements IRuntimeTokenStore {
     const { results } = await this.database
       .prepare(
         `
-        select id, name, token_hash, created_at, last_used_at, revoked_at
+        select id, name, token_hash, created_at, last_used_at
         from runtime_tokens
+        where revoked_at is null
         order by created_at desc, id desc
       `,
       )
@@ -205,15 +199,11 @@ export class D1RuntimeTokenStore implements IRuntimeTokenStore {
       tokenHash: readString(row, "token_hash"),
       createdAt: readString(row, "created_at"),
       lastUsedAt: readOptionalString(row, "last_used_at"),
-      revokedAt: readOptionalString(row, "revoked_at"),
     }));
   }
 
-  async revoke(id: string, revokedAt: string): Promise<boolean> {
-    const result = await this.database
-      .prepare("update runtime_tokens set revoked_at = ? where id = ? and revoked_at is null")
-      .bind(revokedAt, id)
-      .run();
+  async revoke(id: string): Promise<boolean> {
+    const result = await this.database.prepare("delete from runtime_tokens where id = ?").bind(id).run();
     return (result.meta.changes ?? 0) > 0;
   }
 

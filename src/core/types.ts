@@ -211,7 +211,7 @@ export type ProviderDefinition = {
   /** Optional linked icon URL; third-party brand rights remain with their owners. */
   iconUrl?: string;
   /** Public action catalog for this provider. */
-  actions: ActionDefinition[];
+  actions: readonly ActionDefinition[];
 };
 
 /**
@@ -401,6 +401,40 @@ export type ActionExecutor<TInput = unknown, TOutput = unknown> = (
   input: TInput,
   context: ExecutionContext,
 ) => Promise<ExecutionResult<TOutput>>;
+
+export interface ProxyRequestInput {
+  endpoint: string;
+  method: string;
+  query?: Record<string, unknown>;
+  headers?: Record<string, unknown>;
+  body?: unknown;
+}
+
+export interface ProxyResponse {
+  status: number;
+  headers: Record<string, string>;
+  bodyEncoding?: "base64";
+  data: unknown;
+}
+
+export type ProxyExecutionResult =
+  | {
+      ok: true;
+      response: ProxyResponse;
+    }
+  | {
+      ok: false;
+      error: {
+        code: string;
+        message: string;
+        details?: unknown;
+      };
+    };
+
+export type ProviderProxyExecutor = (
+  input: ProxyRequestInput,
+  context: ExecutionContext,
+) => Promise<ProxyExecutionResult>;
 
 /**
  * Executor map for one provider.

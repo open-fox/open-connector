@@ -38,7 +38,7 @@ GMAIL_CLIENT_ID=... GMAIL_CLIENT_SECRET=... node examples/local-http/gmail.ts
 Configure the Google OAuth app redirect URI to:
 
 ```text
-http://localhost:3000/oauth/callback/gmail
+http://localhost:3000/oauth/callback
 ```
 
 Open the printed authorization URL in a browser, finish consent, then execute Gmail actions through

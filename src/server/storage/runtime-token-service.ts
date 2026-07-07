@@ -6,7 +6,6 @@ export interface RuntimeTokenRecord {
   tokenHash: string;
   createdAt: string;
   lastUsedAt?: string;
-  revokedAt?: string;
 }
 
 export interface RuntimeTokenSummary {
@@ -14,7 +13,6 @@ export interface RuntimeTokenSummary {
   name: string;
   createdAt: string;
   lastUsedAt?: string;
-  revokedAt?: string;
 }
 
 export interface RuntimeTokenCreation {
@@ -25,7 +23,7 @@ export interface RuntimeTokenCreation {
 export interface IRuntimeTokenStore {
   add(record: RuntimeTokenRecord): Promise<void>;
   list(): Promise<RuntimeTokenRecord[]>;
-  revoke(id: string, revokedAt: string): Promise<boolean>;
+  revoke(id: string): Promise<boolean>;
   markUsed(id: string, usedAt: string): Promise<void>;
 }
 
@@ -56,13 +54,12 @@ export class RuntimeTokenService {
   }
 
   async revokeToken(id: string): Promise<boolean> {
-    return this.store.revoke(id, new Date().toISOString());
+    return this.store.revoke(id);
   }
 
   async verifyToken(token: string): Promise<boolean> {
     const tokenHash = hashRuntimeToken(token);
-    const activeTokens = (await this.store.list()).filter((record) => !record.revokedAt);
-    const matched = activeTokens.find((record) => equalHashes(record.tokenHash, tokenHash));
+    const matched = (await this.store.list()).find((record) => equalHashes(record.tokenHash, tokenHash));
     if (!matched) {
       return false;
     }
@@ -82,7 +79,6 @@ export function summarizeRuntimeToken(record: RuntimeTokenRecord): RuntimeTokenS
     name: record.name,
     createdAt: record.createdAt,
     lastUsedAt: record.lastUsedAt,
-    revokedAt: record.revokedAt,
   };
 }
 

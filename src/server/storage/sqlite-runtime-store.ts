@@ -237,26 +237,20 @@ export class SqliteRuntimeTokenStore implements IRuntimeTokenStore {
     this.database
       .prepare(
         `
-        insert into runtime_tokens (id, name, token_hash, created_at, last_used_at, revoked_at)
-        values (?, ?, ?, ?, ?, ?)
+        insert into runtime_tokens (id, name, token_hash, created_at, last_used_at)
+        values (?, ?, ?, ?, ?)
       `,
       )
-      .run(
-        record.id,
-        record.name,
-        record.tokenHash,
-        record.createdAt,
-        record.lastUsedAt ?? null,
-        record.revokedAt ?? null,
-      );
+      .run(record.id, record.name, record.tokenHash, record.createdAt, record.lastUsedAt ?? null);
   }
 
   async list(): Promise<RuntimeTokenRecord[]> {
     return this.database
       .prepare(
         `
-        select id, name, token_hash, created_at, last_used_at, revoked_at
+        select id, name, token_hash, created_at, last_used_at
         from runtime_tokens
+        where revoked_at is null
         order by created_at desc, id desc
       `,
       )
@@ -267,14 +261,11 @@ export class SqliteRuntimeTokenStore implements IRuntimeTokenStore {
         tokenHash: readString(row, "token_hash"),
         createdAt: readString(row, "created_at"),
         lastUsedAt: readOptionalString(row, "last_used_at"),
-        revokedAt: readOptionalString(row, "revoked_at"),
       }));
   }
 
-  async revoke(id: string, revokedAt: string): Promise<boolean> {
-    const result = this.database
-      .prepare("update runtime_tokens set revoked_at = ? where id = ? and revoked_at is null")
-      .run(revokedAt, id);
+  async revoke(id: string): Promise<boolean> {
+    const result = this.database.prepare("delete from runtime_tokens where id = ?").run(id);
     return result.changes > 0;
   }
 

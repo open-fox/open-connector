@@ -91,6 +91,7 @@ describe("D1RuntimeDatabase", () => {
     expect(listed?.lastUsedAt).toBeTruthy();
 
     await expect(tokens.revokeToken(created.record.id)).resolves.toBe(true);
+    await expect(tokens.listTokens()).resolves.toEqual([]);
     await expect(tokens.verifyToken(created.token)).resolves.toBe(false);
     await expect(tokens.revokeToken(created.record.id)).resolves.toBe(false);
   });

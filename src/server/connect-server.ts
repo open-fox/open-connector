@@ -35,7 +35,11 @@ import {
   writeRuntimeSuccess,
 } from "./api/runtime-api.ts";
 import { createTransitFileResponse, TransitFileError } from "./files/transit-file-store.ts";
+import { ProxyRunner } from "./proxy/proxy-runner.ts";
 import { decodeRunLogCursor } from "./storage/runtime-store.ts";
+
+const oauthCompletionChannelName = "oomol-connect-oauth";
+const oauthCompletedType = "oauth.completed";
 
 /**
  * Dependencies required to construct the local connector server.
@@ -64,10 +68,18 @@ export interface IConnectServerOptions {
 export class ConnectServer {
   private readonly options: IConnectServerOptions;
   private readonly actionSearch: ActionSearchIndexProvider;
+  private readonly proxyRunner: ProxyRunner;
 
   constructor(options: IConnectServerOptions) {
     this.options = options;
     this.actionSearch = options.actionSearch ?? createActionSearchIndexProvider(options.catalog.actions);
+    this.proxyRunner = new ProxyRunner({
+      catalog: options.catalog,
+      providerLoader: options.providerLoader,
+      connections: options.connections,
+      actionPolicy: options.actionPolicy,
+      logger: options.logger,
+    });
   }
 
   createApp(): Hono {
@@ -87,14 +99,7 @@ export class ConnectServer {
     app.get("/v1/apps/services/:service", (context) =>
       this.listRuntimeAppsByService(context, context.req.param("service")),
     );
-    app.post("/v1/proxy/:service", (context) =>
-      writeRuntimeFailure(context, {
-        status: 501,
-        errorCode: "proxy_not_supported",
-        message: `Proxy execution is not supported for ${context.req.param("service")}.`,
-        meta: { service: context.req.param("service") },
-      }),
-    );
+    app.post("/v1/proxy/:service", (context) => this.createRuntimeProxyRequest(context, context.req.param("service")));
 
     app.get("/openapi.json", (context) =>
       context.json(
@@ -153,7 +158,9 @@ export class ConnectServer {
     );
     app.post("/api/oauth/authorizations", (context) => this.createOAuthAuthorization(context));
     app.get("/oauth/callback", (context) => this.completeOAuth(context));
-    app.all("/mcp", (context) => this.handleMcp(context));
+    app.post("/mcp", (context) => this.handleMcp(context));
+    app.get("/mcp", (context) => this.rejectMcpMethod(context));
+    app.delete("/mcp", (context) => this.rejectMcpMethod(context));
     app.get("/mcp/tools", (context) => context.json({ tools: listMcpToolSummaries() }));
 
     this.options.registerStaticRoutes?.(app);
@@ -398,6 +405,41 @@ export class ConnectServer {
     }
   }
 
+  private async createRuntimeProxyRequest(context: Context, service: string): Promise<Response> {
+    let body: Record<string, unknown>;
+    try {
+      body = await readJsonBody(context);
+    } catch (error) {
+      if (error instanceof HttpRequestError) {
+        return writeRuntimeFailure(context, {
+          status: 400,
+          errorCode: "invalid_input",
+          message: error.message,
+          meta: { service },
+        });
+      }
+
+      throw error;
+    }
+
+    const result = await this.proxyRunner.run({
+      service,
+      input: body,
+      connectionName: readConnectionName(context, body),
+    });
+    if (result.ok) {
+      return writeRuntimeSuccess(context, result.response);
+    }
+
+    return writeRuntimeFailure(context, {
+      status: result.status,
+      errorCode: result.errorCode,
+      message: result.message,
+      data: result.data,
+      meta: result.meta,
+    });
+  }
+
   private async listRuntimeApps(context: Context): Promise<Response> {
     return writeRuntimeSuccess(
       context,
@@ -450,6 +492,20 @@ export class ConnectServer {
     } finally {
       await server.close();
     }
+  }
+
+  private rejectMcpMethod(context: Context): Response {
+    return context.json(
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Method not allowed.",
+        },
+        id: null,
+      },
+      405,
+    );
   }
 
   private async listConnections(context: Context): Promise<Response> {
@@ -674,9 +730,7 @@ export class ConnectServer {
       throw error;
     }
 
-    return context.html(
-      `<html><body><h1>Connected ${escapeHtml(service)}</h1><p>You can close this window and return to OOMOL Connect.</p></body></html>`,
-    );
+    return context.html(renderOAuthCompletionPage(service));
   }
 
   private async writeConnectionResult(
@@ -744,6 +798,146 @@ function readConnectionName(context: Context, body?: Record<string, unknown>): s
     optionalString(context.req.query("connectionName")) ??
     optionalString(context.req.query("alias"))
   );
+}
+
+function renderOAuthCompletionPage(service: string): string {
+  const payload = scriptJson({
+    type: oauthCompletedType,
+    service,
+  });
+  const escapedService = escapeHtml(service);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connected ${escapedService}</title>
+<style>
+:root {
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222.2 84% 4.9%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222.2 84% 4.9%);
+  --muted: hsl(210 40% 96.1%);
+  --muted-foreground: hsl(215.4 16.3% 46.9%);
+  --border: hsl(214.3 31.8% 91.4%);
+  --primary: hsl(222.2 47.4% 11.2%);
+  --primary-foreground: hsl(210 40% 98%);
+  --ring: hsl(222.2 84% 4.9%);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.card {
+  width: min(100%, 420px);
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 1px 2px hsl(222.2 84% 4.9% / 0.04), 0 12px 32px hsl(222.2 84% 4.9% / 0.08);
+}
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.badge {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+}
+h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 22px;
+}
+code {
+  border-radius: 6px;
+  background: var(--muted);
+  padding: 2px 6px;
+  color: var(--foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+.button {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+}
+.button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.button:hover {
+  background: var(--muted);
+}
+.close-note {
+  font-size: 12px;
+  line-height: 18px;
+}
+</style>
+</head>
+<body>
+<main class="card" role="status" aria-live="polite">
+  <div class="header">
+    <span class="badge">Connected</span>
+    <h1>Connection ready</h1>
+    <p>OAuth finished for <code>${escapedService}</code>. Return to OOMOL Connect to continue.</p>
+  </div>
+  <div class="actions">
+    <button class="button" type="button" onclick="window.close()">Close window</button>
+    <p class="close-note">Automatically closing in 5 seconds.</p>
+  </div>
+</main>
+<script>(()=>{if("BroadcastChannel" in window){const channel=new BroadcastChannel(${scriptJson(oauthCompletionChannelName)});channel.postMessage(${payload});channel.close();}setTimeout(()=>window.close(),5000);})();</script>
+</body>
+</html>`;
+}
+
+function scriptJson(value: unknown): string {
+  return JSON.stringify(value).replaceAll("<", "\\u003c");
 }
 
 type SearchQuery =

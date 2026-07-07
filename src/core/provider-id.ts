@@ -1,4 +1,4 @@
-const providerIdPattern = /^[a-z0-9_]+$/;
+const providerIdPattern = /^[a-z0-9_-]+$/;
 
 /**
  * Check provider ids used as source directory names and catalog filenames.

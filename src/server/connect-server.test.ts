@@ -1,7 +1,13 @@
 import type { IConnectionStore, StoredConnection } from "../connection-service.ts";
 import type { ActionPolicyService } from "../core/action-policy.ts";
 import type { ActionSearchIndexProvider } from "../core/action-search.ts";
-import type { ActionDefinition, ActionExecutor, ProviderDefinition, ResolvedCredential } from "../core/types.ts";
+import type {
+  ActionDefinition,
+  ActionExecutor,
+  ProviderDefinition,
+  ProviderProxyExecutor,
+  ResolvedCredential,
+} from "../core/types.ts";
 import type { IOAuthClientConfigStore, OAuthClientConfig } from "../oauth/oauth-client-config-service.ts";
 import type { IOAuthStateStore, OAuthAuthorizationState } from "../oauth/oauth-flow-service.ts";
 import type { IProviderLoader } from "../providers/provider-loader.ts";
@@ -291,6 +297,37 @@ describe("ConnectServer", () => {
     });
     expect(body).not.toHaveProperty("secretExtra");
     expect(JSON.stringify(body)).not.toContain("app-token");
+  });
+
+  it("deletes OAuth client configs", async () => {
+    const app = createTestServer([oauthProvider]).createApp();
+
+    const config = await app.request("/api/oauth/configs/oauth_example", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientId: "client-id",
+        clientSecret: "client-secret",
+      }),
+    });
+    expect(config.status).toBe(200);
+
+    const deleted = await app.request("/api/oauth/configs/oauth_example", { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    await expect(deleted.json()).resolves.toEqual({
+      service: "oauth_example",
+      configured: false,
+    });
+
+    const configs = await app.request("/api/oauth/configs");
+    expect(configs.status).toBe(200);
+    await expect(configs.json()).resolves.toMatchObject([
+      {
+        service: "oauth_example",
+        configured: false,
+        clientId: null,
+      },
+    ]);
   });
 
   it("logs connection and OAuth steps without credential values", async () => {
@@ -597,6 +634,37 @@ describe("ConnectServer", () => {
     }
   });
 
+  it("documents provider proxy requests in OpenAPI", async () => {
+    const app = createTestServer([apiKeyProvider]).createApp();
+
+    const response = await app.request("/openapi.json");
+    const document = (await response.json()) as { paths: Record<string, unknown> };
+
+    expect(document.paths["/v1/proxy/{service}"]).toMatchObject({
+      post: {
+        summary: "Proxy one provider API request.",
+      },
+    });
+  });
+
+  it("rejects non-POST MCP requests", async () => {
+    const app = createTestServer([apiKeyProvider]).createApp();
+
+    for (const method of ["DELETE", "GET"]) {
+      const response = await app.request("/mcp", { method });
+
+      expect(response.status).toBe(405);
+      await expect(response.json()).resolves.toEqual({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Method not allowed.",
+        },
+        id: null,
+      });
+    }
+  });
+
   it("accepts the shared OAuth callback route without a service path segment", async () => {
     const app = createTestServer([apiKeyProvider], { auth: { adminToken: "local-token" } }).createApp();
 
@@ -641,6 +709,17 @@ describe("ConnectServer", () => {
     const callbackText = await callback.text();
 
     expect(callback.status, callbackText).toBe(200);
+    expect(callbackText).toContain("BroadcastChannel");
+    expect(callbackText).toContain('"type":"oauth.completed"');
+    expect(callbackText).toContain('"service":"oauth_example"');
+    expect(callbackText).not.toContain("window.opener");
+    expect(callbackText).not.toContain('postMessage(message,"*"');
+    expect(callbackText).toContain("Connection ready");
+    expect(callbackText).toContain("card");
+    expect(callbackText).toContain("badge");
+    expect(callbackText).toContain("Automatically closing in 5 seconds.");
+    expect(callbackText).toContain("setTimeout");
+    expect(callbackText).toContain("window.close(),5000");
     const connections = await app.request("/api/connections");
     expect(connections.status).toBe(200);
     await expect(connections.json()).resolves.toMatchObject([
@@ -826,10 +905,14 @@ describe("ConnectServer", () => {
     expect(revoked.status).toBe(200);
     await expect(revoked.json()).resolves.toEqual({ id: createdBody.record.id, revoked: true });
 
-    const revokedUnauthorized = await app.request("/v1/actions", {
+    const listedAfterRevoke = await app.request("/api/runtime-tokens");
+    expect(listedAfterRevoke.status).toBe(200);
+    await expect(listedAfterRevoke.json()).resolves.toEqual([]);
+
+    const reopened = await app.request("/v1/actions", {
       headers: { authorization: `Bearer ${createdBody.token}` },
     });
-    expect(revokedUnauthorized.status).toBe(401);
+    expect(reopened.status).toBe(200);
   });
 
   it("stores redacted run log summaries for HTTP action execution", async () => {
@@ -1370,6 +1453,97 @@ describe("ConnectServer", () => {
     });
   });
 
+  it("executes provider proxy requests through the v1 runtime envelope", async () => {
+    const app = createTestServer([apiKeyProvider], {
+      providerLoader: new ProxyProviderLoader(),
+    }).createApp();
+
+    await app.request("/api/connections/example", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ authType: "api_key", values: { apiKey: "example-key" }, connectionName: "work" }),
+    });
+
+    const response = await app.request("/v1/proxy/example", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-oomol-connector-alias": "work",
+      },
+      body: JSON.stringify({
+        endpoint: "/items",
+        method: "post",
+        query: { limit: 2 },
+        headers: { accept: "application/json" },
+        body: { name: "Example" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      message: "OK",
+      data: {
+        status: 202,
+        headers: { "content-type": "application/json" },
+        data: {
+          endpoint: "/items",
+          method: "POST",
+          query: { limit: 2 },
+          headers: { accept: "application/json" },
+          body: { name: "Example" },
+          authType: "api_key",
+        },
+      },
+      meta: {},
+    });
+  });
+
+  it("rejects invalid provider proxy endpoints", async () => {
+    const app = createTestServer([apiKeyProvider], {
+      providerLoader: new ProxyProviderLoader(),
+    }).createApp();
+
+    const response = await app.request("/v1/proxy/example", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint: "https://evil.test/a", method: "GET" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      errorCode: "invalid_input",
+    });
+  });
+
+  it("maps provider proxy failures to stable v1 envelopes", async () => {
+    const app = createTestServer([apiKeyProvider], {
+      providerLoader: new ProxyProviderLoader(async () => ({
+        ok: false,
+        error: {
+          code: "authorization_failed",
+          message: "Provider rejected the credential.",
+          details: { status: 401 },
+        },
+      })),
+    }).createApp();
+
+    const response = await app.request("/v1/proxy/example", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint: "/items", method: "GET" }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      errorCode: "authorization_failed",
+      message: "Provider rejected the credential.",
+      data: { status: 401 },
+    });
+  });
+
   it("uploads, serves, and deletes local transit files", async () => {
     const rootDir = await createTempDir();
     try {
@@ -1625,6 +1799,10 @@ class EmptyProviderLoader implements IProviderLoader {
     throw new Error("No actions are available in this test.");
   }
 
+  async loadProxyExecutor(): Promise<ProviderProxyExecutor | undefined> {
+    return undefined;
+  }
+
   async loadCredentialValidators(): Promise<undefined> {
     return undefined;
   }
@@ -1636,6 +1814,10 @@ class EchoProviderLoader implements IProviderLoader {
       await context.getCredential("example");
       return { ok: true, output: input };
     };
+  }
+
+  async loadProxyExecutor(): Promise<ProviderProxyExecutor | undefined> {
+    return undefined;
   }
 
   async loadCredentialValidators(): Promise<{
@@ -1658,6 +1840,39 @@ class EchoProviderLoader implements IProviderLoader {
         };
       },
     };
+  }
+}
+
+class ProxyProviderLoader extends EchoProviderLoader {
+  private readonly proxy?: ProviderProxyExecutor;
+
+  constructor(proxy?: ProviderProxyExecutor) {
+    super();
+    this.proxy = proxy;
+  }
+
+  override async loadProxyExecutor(): Promise<ProviderProxyExecutor> {
+    return (
+      this.proxy ??
+      (async (input, context) => {
+        const credential = await context.getCredential("example");
+        return {
+          ok: true,
+          response: {
+            status: 202,
+            headers: { "content-type": "application/json" },
+            data: {
+              endpoint: input.endpoint,
+              method: input.method,
+              query: input.query,
+              headers: input.headers,
+              body: input.body,
+              authType: credential?.authType,
+            },
+          },
+        };
+      })
+    );
   }
 }
 
@@ -1751,19 +1966,13 @@ class MemoryRuntimeTokenStore implements IRuntimeTokenStore {
     );
   }
 
-  async revoke(id: string, revokedAt: string): Promise<boolean> {
-    const token = this.tokens.get(id);
-    if (!token || token.revokedAt) {
-      return false;
-    }
-
-    this.tokens.set(id, { ...token, revokedAt });
-    return true;
+  async revoke(id: string): Promise<boolean> {
+    return this.tokens.delete(id);
   }
 
   async markUsed(id: string, usedAt: string): Promise<void> {
     const token = this.tokens.get(id);
-    if (token && !token.revokedAt) {
+    if (token) {
       this.tokens.set(id, { ...token, lastUsedAt: usedAt });
     }
   }

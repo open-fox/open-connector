@@ -33,6 +33,9 @@ Point MCP-capable clients at:
 http://localhost:3000/mcp
 ```
 
+The local MCP endpoint supports stateless `POST` JSON-RPC requests with JSON responses. It does not
+keep `GET` SSE streams open.
+
 The MCP server exposes a small discovery-oriented tool set:
 
 - `list_apps`
@@ -129,8 +132,29 @@ under `OOMOL_CONNECT_DATA_DIR/files` and are cleaned up by age.
 - `GET /v1/apps/authenticated`
 - `POST /v1/proxy/:service`
 
-`POST /v1/proxy/:service` currently returns `proxy_not_supported` until a provider proxy runtime is
-implemented.
+`POST /v1/proxy/:service` proxies one provider API request when that provider has a registered or
+provider-specific local proxy executor. Providers without a proxy executor return `proxy_not_supported`.
+
+Request body:
+
+```json
+{
+  "endpoint": "/provider/path",
+  "method": "GET",
+  "query": { "limit": "10" },
+  "headers": { "accept": "application/json" },
+  "body": { "name": "example" }
+}
+```
+
+`endpoint` must be a relative path beginning with `/`; absolute URLs are rejected. The runtime keeps
+stored credentials local and lets the provider proxy executor apply provider-specific authentication.
+Successful responses use the standard `/v1` success envelope with `data.status`, `data.headers`, and
+`data.data`.
+
+Proxy requests are controlled by `OOMOL_CONNECT_ALLOWED_PROXIES` and
+`OOMOL_CONNECT_BLOCKED_PROXIES`. When action policy is configured, provider proxies are denied by
+default unless explicitly allowlisted.
 
 ## Local Admin Endpoints
 

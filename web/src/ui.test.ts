@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "./i18n";
-import { App, loadRuntimeData, nextAuthLoadState, nextLogoutState } from "./ui";
+import { App, loadRuntimeData, nextAuthLoadState, nextLogoutState, subscribeToOAuthCompletions } from "./ui";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -62,6 +62,47 @@ describe("nextAuthLoadState", () => {
       pendingUnlockToken: "",
       authSession: { adminAuthConfigured: true, authenticated: true },
     });
+  });
+});
+
+describe("subscribeToOAuthCompletions", () => {
+  it("refreshes when the OAuth callback broadcasts completion", () => {
+    const addEventListener = vi.fn();
+    class FakeBroadcastChannel {
+      static instance: FakeBroadcastChannel | undefined;
+      private listener: ((event: MessageEvent) => void) | undefined;
+      closed = false;
+
+      constructor(readonly name: string) {
+        FakeBroadcastChannel.instance = this;
+      }
+
+      addEventListener(type: string, listener: (event: MessageEvent) => void): void {
+        if (type === "message") {
+          this.listener = listener;
+        }
+      }
+
+      close(): void {
+        this.closed = true;
+      }
+
+      emit(data: unknown): void {
+        this.listener?.({ data } as MessageEvent);
+      }
+    }
+    vi.stubGlobal("addEventListener", addEventListener);
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel);
+    const refresh = vi.fn();
+
+    const unsubscribe = subscribeToOAuthCompletions(refresh);
+    FakeBroadcastChannel.instance?.emit({ type: "oauth.completed", service: "gmail" });
+
+    expect(FakeBroadcastChannel.instance?.name).toBe("oomol-connect-oauth");
+    expect(addEventListener).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalledWith({ type: "oauth.completed", service: "gmail" });
+    unsubscribe();
+    expect(FakeBroadcastChannel.instance?.closed).toBe(true);
   });
 });
 

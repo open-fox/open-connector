@@ -1,5 +1,5 @@
 // Gmail API docs: https://developers.google.com/gmail/api/reference/rest
-// Google OAuth redirect URI for this local runtime: http://localhost:3000/oauth/callback/gmail
+// Google OAuth redirect URI for this local runtime: http://localhost:3000/oauth/callback
 
 import { adminHeaders, fetchJson } from "./client.ts";
 

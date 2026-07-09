@@ -323,7 +323,7 @@ export const mcdonaldsCnActions: Array<ProviderActionDefinition<McdonaldsCnActio
         daypartCode: queryString,
         orderType: queryString,
         beCode: queryString,
-        cardId: queryString,
+        cardId: s.nullable(queryString),
         date: dateString,
         time: timeString,
         isGroupMeal: flagString,

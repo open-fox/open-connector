@@ -23,7 +23,7 @@ export const provider: ProviderDefinition = {
           required: true,
           secret: false,
           placeholder: "McDonald's China AppId",
-          description: "McDonald's China merchant application ID from the Open Platform.",
+          description: "McDonald's China merchant application ID from the Open Platform at https://open.mcd.cn.",
         },
         {
           key: "merchantId",
@@ -32,7 +32,7 @@ export const provider: ProviderDefinition = {
           required: true,
           secret: false,
           placeholder: "McDonald's China MerchantId",
-          description: "McDonald's China merchant ID from the Open Platform.",
+          description: "McDonald's China merchant ID from the Open Platform at https://open.mcd.cn.",
         },
         {
           key: "signingKey",
@@ -42,7 +42,7 @@ export const provider: ProviderDefinition = {
           secret: true,
           placeholder: "McDonald's China signing key",
           description:
-            "Signing key paired with the AppId and MerchantId. It is used to generate the Sign header required by the Open Platform.",
+            "Signing key paired with the AppId and MerchantId from the Open Platform at https://open.mcd.cn. It is used to generate the Sign header.",
         },
         {
           key: "environment",
@@ -55,6 +55,12 @@ export const provider: ProviderDefinition = {
             "McDonald's China API environment. Use prod for https://api.open.mcd.cn or uat for https://api-uat.open.mcdchina.net. Defaults to prod.",
         },
       ],
+      testAction: {
+        actionName: "get_cities",
+        input: {
+          getCurrent: "0",
+        },
+      },
     },
   ],
   homepageUrl: "https://open.mcd.cn",

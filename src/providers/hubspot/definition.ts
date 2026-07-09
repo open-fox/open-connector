@@ -1,12 +1,11 @@
 import type { ProviderDefinition } from "../../core/types.ts";
 
 import { hubspotActions } from "./actions.ts";
-import { hubspotOAuthScopes } from "./scopes.ts";
 
 const service = "hubspot";
 
 /**
- * HubSpot provider backed by HubSpot OAuth and CRM v3 APIs.
+ * HubSpot provider backed by HubSpot MCP OAuth and MCP-native tools.
  */
 export const provider: ProviderDefinition = {
   service,
@@ -16,12 +15,15 @@ export const provider: ProviderDefinition = {
   auth: [
     {
       type: "oauth2",
-      authorizationUrl: "https://app.hubspot.com/oauth/authorize",
-      tokenUrl: "https://api.hubapi.com/oauth/v3/token",
-      scopes: hubspotOAuthScopes,
+      authorizationUrl: "https://mcp.hubspot.com/oauth/authorize/user",
+      tokenUrl: "https://mcp.hubspot.com/oauth/v3/token",
+      refreshTokenUrl: "https://mcp.hubspot.com/oauth/v3/token",
+      scopes: [],
       tokenEndpointAuthMethod: "client_secret_post",
       tokenRequestFormat: "form",
-      authorizationParams: {},
+      pkce: {
+        method: "S256",
+      },
     },
   ],
   homepageUrl: "https://www.hubspot.com",

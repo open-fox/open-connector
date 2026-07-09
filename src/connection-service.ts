@@ -8,6 +8,7 @@ import type {
   CustomCredentialAuthDefinition,
   ProviderDefinition,
   ResolvedCredential,
+  RuntimeLogger,
 } from "./core/types.ts";
 import type { IOAuthCredentialRefresher } from "./oauth/oauth-credential-refresh-service.ts";
 import type { IProviderLoader } from "./providers/provider-loader.ts";
@@ -48,6 +49,7 @@ export interface ConnectionServiceOptions {
   oauthCredentials?: IOAuthCredentialRefresher;
   providerLoader: IProviderLoader;
   store: IConnectionStore;
+  logger?: RuntimeLogger;
 }
 
 export interface StoredConnection {
@@ -109,12 +111,14 @@ export class ConnectionService {
   private readonly oauthCredentials?: IOAuthCredentialRefresher;
   private readonly providerLoader: IProviderLoader;
   private readonly store: IConnectionStore;
+  private readonly logger?: RuntimeLogger;
 
   constructor(input: ConnectionServiceOptions) {
     this.catalog = input.catalog;
     this.oauthCredentials = input.oauthCredentials;
     this.providerLoader = input.providerLoader;
     this.store = input.store;
+    this.logger = input.logger;
   }
 
   async listConnections(): Promise<ConnectionSummary[]> {
@@ -390,7 +394,7 @@ export class ConnectionService {
     input: ApiKeyCredentialValidationInput,
   ): Promise<CredentialValidationResult> {
     const validators = await this.providerLoader.loadCredentialValidators(service);
-    return this.runCredentialValidator(service, () => validators?.apiKey?.(input, { fetcher: defaultProviderFetch }));
+    return this.runCredentialValidator(service, () => validators?.apiKey?.(input, this.createValidatorOptions()));
   }
 
   private async validateCustomCredential(
@@ -399,7 +403,7 @@ export class ConnectionService {
   ): Promise<CredentialValidationResult> {
     const validators = await this.providerLoader.loadCredentialValidators(service);
     return this.runCredentialValidator(service, () =>
-      validators?.customCredential?.(input, { fetcher: defaultProviderFetch }),
+      validators?.customCredential?.(input, this.createValidatorOptions()),
     );
   }
 
@@ -408,9 +412,14 @@ export class ConnectionService {
     credential: Extract<ResolvedCredential, { authType: "oauth2" }>,
   ): Promise<CredentialValidationResult> {
     const validators = await this.providerLoader.loadCredentialValidators(service);
-    return this.runCredentialValidator(service, () =>
-      validators?.oauth2?.(credential, { fetcher: defaultProviderFetch }),
-    );
+    return this.runCredentialValidator(service, () => validators?.oauth2?.(credential, this.createValidatorOptions()));
+  }
+
+  private createValidatorOptions() {
+    return {
+      fetcher: defaultProviderFetch,
+      logger: this.logger,
+    };
   }
 
   private async resolveOAuthCredential(

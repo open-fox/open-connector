@@ -35,6 +35,12 @@ export const provider: ProviderDefinition = {
             "Secret paired with the Fivetran Scoped or System API key. Store it securely because Fivetran only displays it when it is generated.",
         },
       ],
+      testAction: {
+        actionName: "list_transformation_projects",
+        input: {
+          limit: 1,
+        },
+      },
     },
   ],
   homepageUrl: "https://fivetran.com",

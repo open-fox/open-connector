@@ -1,9 +1,26 @@
-import type { CredentialValidators, ExecutionContext, ProviderExecutors } from "../../core/types.ts";
+import type {
+  CredentialValidators,
+  ExecutionContext,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+  ProxyExecutionResult,
+} from "../../core/types.ts";
 import type { FivetranContext } from "./runtime.ts";
 
+import { Buffer } from "node:buffer";
 import { requiredString } from "../../core/cast.ts";
-import { defineProviderExecutors, ProviderRequestError, requireCustomCredential } from "../provider-runtime.ts";
-import { fivetranActionHandlers, validateFivetranCredential } from "./runtime.ts";
+import {
+  createProviderProxyUrl,
+  defineProviderExecutors,
+  normalizeProviderProxyHeaders,
+  providerUserAgent,
+  ProviderRequestError,
+  readProviderProxyErrorMessage,
+  readProviderProxyResponse,
+  requireCustomCredential,
+  toProviderProxyError,
+} from "../provider-runtime.ts";
+import { fivetranActionHandlers, fivetranApiBaseUrl, validateFivetranCredential } from "./runtime.ts";
 
 const service = "fivetran";
 
@@ -24,6 +41,48 @@ export const executors: ProviderExecutors = defineProviderExecutors<FivetranCont
     };
   },
 });
+
+export const proxy: ProviderProxyExecutor = async (input, context: ExecutionContext): Promise<ProxyExecutionResult> => {
+  try {
+    const credential = await requireCustomCredential(context, service);
+    const apiKey = readCredentialField(credential.values, "apiKey");
+    const apiSecret = readCredentialField(credential.values, "apiSecret");
+    const url = createProviderProxyUrl(fivetranApiBaseUrl, input.endpoint, input.query);
+    const headers = normalizeProviderProxyHeaders(input.headers);
+    headers.set("authorization", `Basic ${Buffer.from(`${apiKey}:${apiSecret}`).toString("base64")}`);
+    headers.set("user-agent", providerUserAgent);
+    if (!headers.has("accept")) {
+      headers.set("accept", "application/json");
+    }
+
+    const init: RequestInit = {
+      method: input.method,
+      headers,
+      signal: context.signal,
+    };
+    if (input.body !== undefined) {
+      init.body = typeof input.body === "string" ? input.body : JSON.stringify(input.body);
+      if (!headers.has("content-type") && typeof input.body !== "string") {
+        headers.set("content-type", "application/json");
+      }
+    }
+
+    const response = await fetch(url, init);
+    if (!response.ok) {
+      throw new ProviderRequestError(
+        response.status,
+        await readProviderProxyErrorMessage(response, `Fivetran request failed with HTTP ${response.status}`),
+      );
+    }
+
+    return {
+      ok: true,
+      response: await readProviderProxyResponse(response),
+    };
+  } catch (error) {
+    return toProviderProxyError(error, "Fivetran request failed");
+  }
+};
 
 export const credentialValidators: CredentialValidators = {
   async customCredential(input, { fetcher, signal }) {

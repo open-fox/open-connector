@@ -2,7 +2,7 @@
 
 <img src="../assets/openconnector-readme-banner.png" alt="OpenConnector - Connect Once. Use Everywhere." width="100%" />
 
-[English](../README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [Français](README.fr.md)
+[English](../README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [Français](README.fr.md)
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../LICENSE.txt)
 ![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933)
@@ -17,7 +17,7 @@
 
 OpenConnector est un connector gateway open source pour AI agents, et une alternative à Composio.
 Connectez les comptes d'apps utilisateur une fois, puis exposez un catalog partagé de 1,000+
-providers et 9 400+ Actions prêtes à l'emploi aux agents et applications.
+providers et 10 000+ Actions prêtes à l'emploi aux agents et applications.
 
 Utilisez le [Connector SDK](https://github.com/oomol-lab/connector-sdk) dans le code applicatif,
 [oo CLI](https://github.com/oomol-lab/oo-cli) comme relais pour les agents locaux, MCP pour les
@@ -131,10 +131,16 @@ secrets requis et exécuter `npm run deploy:cloudflare`.
 
 ## Démarrage Rapide
 
-Démarrez le runtime avec Docker Compose :
+Démarrez le runtime depuis l'image publiée avec Docker Compose :
 
 ```bash
-docker compose up --build
+docker compose up
+```
+
+Cela récupère `ghcr.io/oomol-lab/open-connector:latest`. Pour builder depuis les sources :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 ```
 
 Ouvrez la console locale et la référence API générée :
@@ -195,6 +201,14 @@ persistant sur un volume Fly.
 Consultez [fly-io.md](fly-io.md) pour créer l'app Fly, configurer le volume et les secrets,
 déployer, définir un domaine personnalisé et ajuster le scaling.
 
+## Image Docker (GHCR)
+
+Exécutez OpenConnector depuis une image préconstruite sur GitHub Packages (GHCR) :
+`ghcr.io/oomol-lab/open-connector`. Utilisez `latest` pour la dernière release, une version épinglée comme
+`v1.0.0` en production, ou `tip` pour le dernier build de `main`.
+
+Consultez [docker-ghcr.md (anglais)](docker-ghcr.md) pour les tags d'image, le pull et l'exécution.
+
 ## Vous voulez l'utiliser directement ?
 
 Les parcours ci-dessus s'adressent aux équipes qui intègrent le connector dans leurs produits,
@@ -220,6 +234,7 @@ synchroniser dans les outils connectés en natural language.
 - [Runtime API et MCP](runtime-api.md)
 - [Déploiement Fly.io](fly-io.md)
 - [Déploiement Cloudflare](cloudflare.md)
+- [Image Docker (GHCR) (anglais)](docker-ghcr.md)
 - [Configuration](configuration.md)
 - [Credentials et OAuth](credentials.md)
 - [Format du catalog](catalog-format.md)

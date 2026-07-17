@@ -1,6 +1,11 @@
 import type { ActionDefinition, JsonSchema, ProviderDefinition } from "../../core/types.ts";
 
 import { jsonSchema } from "../../core/json-schema.ts";
+import {
+  actionInputMaxDepth,
+  idempotencyKeyMaxBytes,
+  idempotencyRetentionHours,
+} from "../actions/action-idempotency.ts";
 
 /**
  * Minimal OpenAPI document shape returned by the local runtime.
@@ -50,6 +55,30 @@ const errorResponseSchema = jsonSchema.object(
   },
 );
 
+const actionResultMetaSchema = jsonSchema.object(
+  {
+    executionId: jsonSchema.string({ description: "Action execution identifier." }),
+    actionId: jsonSchema.string({ description: "Executed action identifier." }),
+    auditPersisted: jsonSchema.boolean({ description: "Whether the run audit record was stored." }),
+  },
+  {
+    required: ["executionId", "actionId", "auditPersisted"],
+    description: "Action execution metadata.",
+  },
+);
+
+const actionFailureMetaSchema = jsonSchema.object(
+  {
+    executionId: jsonSchema.string({ description: "Execution identifier when action execution began." }),
+    actionId: jsonSchema.string({ description: "Requested action identifier." }),
+    auditPersisted: jsonSchema.boolean({ description: "Whether the run audit record was stored." }),
+  },
+  {
+    required: ["actionId"],
+    description: "Action failure metadata. Execution fields are omitted when execution did not begin.",
+  },
+);
+
 const oauthClientConfigRequestSchema = jsonSchema.object(
   {
     clientId: jsonSchema.string({ description: "OAuth app client id." }),
@@ -72,6 +101,29 @@ const oauthClientConfigRequestSchema = jsonSchema.object(
     description: "User-provided OAuth app client configuration.",
   },
 );
+
+const actionIdempotencyDescription =
+  `Requests with the same Idempotency-Key, action, input, and effective connection replay the original HTTP status and body of completed successes and failures during the ${idempotencyRetentionHours}-hour replay window. ` +
+  "Requests that are still in progress, or whose outcome is uncertain, are not automatically dispatched again. " +
+  "Duplicate suppression does not guarantee exactly-once execution by the provider.";
+
+const actionIdParameter = {
+  name: "actionId",
+  in: "path",
+  required: true,
+  schema: jsonSchema.string({ description: "Action id, usually <service>.<name>." }),
+};
+
+const idempotencyKeyParameter = {
+  name: "Idempotency-Key",
+  in: "header",
+  required: false,
+  schema: { type: "string", minLength: 1 },
+  description: `Optional runtime-wide key for deduplicating retries of the same action request. Leading and trailing whitespace is trimmed; the remaining value must be non-empty and must not exceed ${idempotencyKeyMaxBytes} UTF-8 bytes. Reuse a key only for retries of the same action, input, and effective connection. When this header is present, the action input must not exceed an object/array nesting depth of ${actionInputMaxDepth} levels.`,
+};
+
+const idempotencyConflictDescription =
+  "For idempotency, idempotency_request_in_progress means the original request is still running or its outcome is uncertain, while idempotency_key_conflict means the key was reused for a different action, input, or effective connection. Other runtime conflicts may return their own error code with the same status.";
 
 /**
  * Build OpenAPI docs from the generated catalog.
@@ -161,6 +213,7 @@ export function createOpenApiDocument(
     "/v1/actions/{actionId}": runPath,
     "/v1/proxy/{service}": createProxyPath(),
     "/api/runs": createRunsPath(),
+    "/api/runs/{id}": createRunDetailPath(),
     "/mcp": createMcpPath(),
     "/mcp/tools": getOperation("MCP", "List discovery-oriented MCP tool summaries.", {
       type: "object",
@@ -241,6 +294,7 @@ export function createOpenApiDocument(
         ),
         ConnectionSummary: jsonSchema.object(
           {
+            id: jsonSchema.string({ description: "Stable local connection identifier." }),
             service: jsonSchema.string({ description: "Provider service identifier." }),
             authType: jsonSchema.string({ description: "Connection authentication type." }),
             configured: jsonSchema.boolean({ description: "Whether the provider is connected." }),
@@ -268,7 +322,7 @@ export function createOpenApiDocument(
             ),
           },
           {
-            required: ["service", "authType", "configured", "virtual", "profile"],
+            required: ["id", "service", "authType", "configured", "virtual", "profile"],
             description: "Local provider connection summary.",
           },
         ),
@@ -342,8 +396,12 @@ export function createOpenApiDocument(
             connectionProfile: jsonSchema.unknownObject(
               "Provider account identity that the action used, when a connection was available.",
             ),
+            connectionId: jsonSchema.string({ description: "Stable connection identifier used by the run." }),
             inputSummary: {
               description: "Redacted action input summary.",
+            },
+            outputSummary: {
+              description: "Redacted action output summary.",
             },
             errorCode: jsonSchema.string({ description: "Error code when the run failed." }),
             errorMessage: jsonSchema.string({ description: "Error message when the run failed." }),
@@ -571,9 +629,52 @@ function createRunsPath(): Record<string, unknown> {
           schema: { type: "string" },
           description: "Only return runs whose action id belongs to this service.",
         },
+        {
+          name: "actionId",
+          in: "query",
+          required: false,
+          schema: { type: "string", maxLength: 256 },
+          description: "Only return runs for this exact action id.",
+        },
+        {
+          name: "caller",
+          in: "query",
+          required: false,
+          schema: { type: "string", enum: ["http", "mcp", "web"] },
+          description: "Only return runs from this runtime entry point.",
+        },
+        {
+          name: "ok",
+          in: "query",
+          required: false,
+          schema: { type: "boolean" },
+          description: "Only return successful or failed runs.",
+        },
       ],
       responses: {
         200: jsonResponse({ $ref: "#/components/schemas/RunLogPage" }),
+      },
+    },
+  };
+}
+
+function createRunDetailPath(): Record<string, unknown> {
+  return {
+    get: {
+      tags: ["Runs"],
+      summary: "Get one local action run.",
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string" },
+          description: "Action execution identifier.",
+        },
+      ],
+      responses: {
+        200: jsonResponse({ $ref: "#/components/schemas/RunLog" }),
+        404: jsonResponse({ type: "object", additionalProperties: true }),
       },
     },
   };
@@ -585,15 +686,9 @@ function createRunPath(): Record<string, unknown> {
       tags: ["Runs"],
       summary: "Execute a runtime action.",
       description:
-        "Use the action catalog to discover provider-specific input and output schemas. For a compact strongly typed OpenAPI document for one action, request /openapi.json?actionId=<actionId>.",
-      parameters: [
-        {
-          name: "actionId",
-          in: "path",
-          required: true,
-          schema: jsonSchema.string({ description: "Action id, usually <service>.<name>." }),
-        },
-      ],
+        "Use the action catalog to discover provider-specific input and output schemas. For a compact strongly typed OpenAPI document for one action, request /openapi.json?actionId=<actionId>. " +
+        actionIdempotencyDescription,
+      parameters: [actionIdParameter, idempotencyKeyParameter],
       requestBody: {
         required: true,
         content: {
@@ -611,10 +706,18 @@ function createRunPath(): Record<string, unknown> {
         },
       },
       responses: {
-        200: jsonResponse(runtimeSuccessSchema(jsonSchema.unknown("Action output matching the catalog schema."))),
-        400: jsonResponse(runtimeFailureSchema()),
-        404: jsonResponse(runtimeFailureSchema()),
-        500: jsonResponse(runtimeFailureSchema()),
+        200: jsonResponse(
+          runtimeSuccessSchema(
+            jsonSchema.unknown("Action output matching the catalog schema."),
+            actionResultMetaSchema,
+          ),
+        ),
+        400: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
+        403: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
+        404: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
+        409: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema), idempotencyConflictDescription),
+        429: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
+        500: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
       },
     },
   };
@@ -877,7 +980,8 @@ function createConcreteRunOperation(action: ActionDefinition): Record<string, un
   return {
     tags: ["Runs"],
     summary: `Execute ${action.id}.`,
-    description: action.description,
+    description: `${action.description} ${actionIdempotencyDescription}`,
+    parameters: [actionIdParameter, idempotencyKeyParameter],
     requestBody: {
       required: true,
       content: {
@@ -895,21 +999,27 @@ function createConcreteRunOperation(action: ActionDefinition): Record<string, un
       },
     },
     responses: {
-      200: jsonResponse(runtimeSuccessSchema(action.outputSchema)),
-      400: jsonResponse(runtimeFailureSchema()),
-      404: jsonResponse(runtimeFailureSchema()),
-      500: jsonResponse(runtimeFailureSchema()),
+      200: jsonResponse(runtimeSuccessSchema(action.outputSchema, actionResultMetaSchema)),
+      400: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
+      403: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
+      404: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
+      409: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema), idempotencyConflictDescription),
+      429: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
+      500: jsonResponse(runtimeFailureSchema(actionFailureMetaSchema)),
     },
   };
 }
 
-function runtimeSuccessSchema(data: JsonSchema): JsonSchema {
+function runtimeSuccessSchema(
+  data: JsonSchema,
+  meta: JsonSchema = { type: "object", additionalProperties: true },
+): JsonSchema {
   return jsonSchema.object(
     {
       success: { const: true, type: "boolean" },
       message: { const: "OK", type: "string" },
       data,
-      meta: { type: "object", additionalProperties: true },
+      meta,
     },
     {
       required: ["success", "message", "data", "meta"],
@@ -918,14 +1028,14 @@ function runtimeSuccessSchema(data: JsonSchema): JsonSchema {
   );
 }
 
-function runtimeFailureSchema(): JsonSchema {
+function runtimeFailureSchema(meta: JsonSchema = { type: "object", additionalProperties: true }): JsonSchema {
   return jsonSchema.object(
     {
       success: { const: false, type: "boolean" },
       message: jsonSchema.string({ description: "Human-readable error message." }),
       data: jsonSchema.unknown("Provider or validation error details."),
       errorCode: jsonSchema.string({ description: "Stable machine-readable error code." }),
-      meta: { type: "object", additionalProperties: true },
+      meta,
     },
     {
       required: ["success", "message", "data", "errorCode", "meta"],
@@ -934,9 +1044,9 @@ function runtimeFailureSchema(): JsonSchema {
   );
 }
 
-function jsonResponse(schema: JsonSchema): Record<string, unknown> {
+function jsonResponse(schema: JsonSchema, description = "JSON response."): Record<string, unknown> {
   return {
-    description: "JSON response.",
+    description,
     content: {
       "application/json": {
         schema,

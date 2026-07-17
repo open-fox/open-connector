@@ -32,6 +32,7 @@
     "label": "言語",
     "en": "English",
     "zh-CN": "简体中文",
+    "zh-TW": "繁體中文",
     "ja": "日本語",
     "ru": "Русский",
     "fr": "Français"
@@ -147,6 +148,9 @@
     "noSetupBadge": "設定不要",
     "unconfiguredBadge": "未接続",
     "oauthClientRequiredBadge": "OAuth client が必要",
+    "runtimeUnavailableBadge": "利用不可",
+    "runtimeUnavailableTitle": "現在のランタイムでは利用できません",
+    "runtimeUnavailableDescription": "{{name}} はカタログの参照用に表示されますが、現在のランタイムでは接続の設定やアクションの実行はできません。",
     "summary": {
       "actions": "アクション",
       "auth": "認証",
@@ -161,7 +165,8 @@
       "noSetup": "このプロバイダーはローカル認証情報なしで実行できます。",
       "connected": "ローカル認証情報は {{authType}} で設定済みです。",
       "oauthClientRequired": "{{name}} で OAuth を開始するには、ローカル OAuth client が必要です。",
-      "notConnected": "認証情報が必要な {{name}} アクションを実行する前に、ローカル認証情報を設定してください。"
+      "notConnected": "認証情報が必要な {{name}} アクションを実行する前に、ローカル認証情報を設定してください。",
+      "unavailable": "現在のランタイムでは接続を設定できません。"
     },
     "noConnectionMethodTitle": "接続方式はありません",
     "noConnectionMethodDescription": "このプロバイダーはローカル認証情報を必要としません。",
@@ -260,18 +265,27 @@
   "runs": {
     "noRunsTitle": "実行履歴はまだありません",
     "noRunsDescription": "アクションを実行すると、最近の実行履歴が表示されます。",
+    "action": "アクション",
+    "actionPlaceholder": "アクション ID で絞り込む",
+    "applyActionFilter": "アクションフィルターを適用",
     "service": "サービス",
     "allServices": "すべてのサービス",
+    "caller": "呼び出し元",
+    "allCallers": "すべての呼び出し元",
+    "status": "ステータス",
+    "allStatuses": "すべてのステータス",
+    "copyExecutionId": "実行 ID をコピー",
+    "expandResult": "結果を展開",
+    "collapseResult": "結果を折りたたむ",
     "loadMore": "さらに読み込む",
     "loadMoreFailed": "実行履歴の追加読み込みに失敗しました。",
     "table": {
       "action": "アクション",
-      "caller": "呼び出し元",
+      "context": "コンテキスト",
       "status": "ステータス",
-      "started": "開始時刻",
-      "duration": "所要時間",
+      "timing": "日時",
       "input": "入力",
-      "error": "エラー"
+      "result": "結果"
     }
   },
   "access": {
@@ -309,9 +323,16 @@
       "title": "API Reference",
       "description": "Scalar でローカルランタイム route を確認します。"
     },
-    "mcpTools": {
-      "title": "MCP Tools",
-      "description": "{{count}} 件のアクションがローカル tool として公開されています。"
+    "mcp": {
+      "title": "MCP 接続",
+      "description": "Claude Desktop または Cursor をローカルランタイムに接続します。",
+      "endpoint": "MCP URL",
+      "copyEndpoint": "MCP URL をコピー",
+      "copiedEndpoint": "MCP URL をコピーしました",
+      "configTitle": "JSON 設定",
+      "copyConfig": "JSON 設定をコピー",
+      "copiedConfig": "JSON 設定をコピーしました",
+      "createToken": "Runtime Token を生成"
     },
     "openapi": {
       "title": "OpenAPI JSON",

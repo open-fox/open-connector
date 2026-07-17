@@ -2,7 +2,7 @@
 
 <img src="../assets/openconnector-readme-banner.png" alt="OpenConnector - Connect Once. Use Everywhere." width="100%" />
 
-[English](../README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [Français](README.fr.md)
+[English](../README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [Français](README.fr.md)
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../LICENSE.txt)
 ![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933)
@@ -17,7 +17,7 @@
 
 OpenConnector — open-source connector gateway для AI agents и альтернатива Composio. Подключите
 пользовательские аккаунты приложений один раз, а затем откройте общий catalog из 1,000+ providers и
-9 400+ готовых Actions для агентов и приложений.
+10 000+ готовых Actions для агентов и приложений.
 
 В application code используйте [Connector SDK](https://github.com/oomol-lab/connector-sdk), для
 local-agent relay — [oo CLI](https://github.com/oomol-lab/oo-cli), для agent hosts — MCP, для
@@ -128,10 +128,16 @@ flowchart LR
 
 ## Быстрый Старт
 
-Запустите runtime через Docker Compose:
+Запустите runtime из опубликованного образа через Docker Compose:
 
 ```bash
-docker compose up --build
+docker compose up
+```
+
+Это скачает `ghcr.io/oomol-lab/open-connector:latest`. Чтобы собрать из исходников:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 ```
 
 Откройте локальную console и сгенерированную API reference:
@@ -192,6 +198,14 @@ Fly volume.
 Создание Fly app, настройка volume, secrets, deployment, custom domain и scaling описаны в
 [fly-io.md](fly-io.md).
 
+## Docker-образ (GHCR)
+
+Запускайте OpenConnector из готового образа в GitHub Packages (GHCR): `ghcr.io/oomol-lab/open-connector`.
+Используйте `latest` для новейшего release, закреплённую версию вроде `v1.0.0` для production или `tip`
+для последнего build из `main`.
+
+О тегах образа, pull и запуске см. [docker-ghcr.md (на английском)](docker-ghcr.md).
+
 ## Хотите Использовать Напрямую?
 
 Пути выше предназначены для команд, которые интегрируют connector в свои продукты, runtimes или
@@ -217,6 +231,7 @@ CLI, MCP либо HTTP API.
 - [Runtime API и MCP](runtime-api.md)
 - [Развертывание Fly.io](fly-io.md)
 - [Развертывание Cloudflare](cloudflare.md)
+- [Docker-образ (GHCR) (на английском)](docker-ghcr.md)
 - [Configuration](configuration.md)
 - [Credentials и OAuth](credentials.md)
 - [Формат catalog](catalog-format.md)

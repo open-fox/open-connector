@@ -2,7 +2,7 @@
 
 <img src="../assets/openconnector-readme-banner.png" alt="OpenConnector - Connect Once. Use Everywhere." width="100%" />
 
-[English](../README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [Français](README.fr.md)
+[English](../README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [Français](README.fr.md)
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](../LICENSE.txt)
 ![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933)
@@ -16,7 +16,7 @@
 </div>
 
 OpenConnector 是面向 AI Agent 的开源 connector gateway，也是 Composio 的开源替代方案。
-连接一次用户应用账号，就可以把包含 1,000+ 个 provider 和 9,400+ 个预置 Action 的共享 catalog 暴露给
+连接一次用户应用账号，就可以把包含 1,000+ 个 provider 和 10,000+ 个预置 Action 的共享 catalog 暴露给
 Agent 和应用。
 
 应用代码使用 [Connector SDK](https://github.com/oomol-lab/connector-sdk)，本地 Agent 使用
@@ -114,10 +114,16 @@ secret，然后运行 `npm run deploy:cloudflare`。
 
 ## 快速开始
 
-使用 Docker Compose 启动运行时：
+使用 Docker Compose 从发布的镜像启动运行时：
 
 ```bash
-docker compose up --build
+docker compose up
+```
+
+这会拉取 `ghcr.io/oomol-lab/open-connector:latest`。想改为从源码构建：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 ```
 
 打开本地控制台和生成的 API 文档：
@@ -174,6 +180,13 @@ OpenConnector 也可以部署到 Fly.io：使用 Node Docker runtime，并把 SQ
 
 Fly app 创建、volume、secret、部署、自定义域名和扩缩容步骤见 [fly-io.md](fly-io.md)。
 
+## Docker 镜像（GHCR）
+
+可以直接用 GitHub Packages（GHCR）上的预构建镜像运行 OpenConnector：`ghcr.io/oomol-lab/open-connector`。最新
+release 用 `latest`，生产环境固定版本号（如 `v1.0.0`），想用最新 `main` 构建则用 `tip`。
+
+镜像标签、拉取和运行的说明见 [docker-ghcr.zh-CN.md](docker-ghcr.zh-CN.md)。
+
 ## 不想先接入？可以直接使用 Wanta
 
 上面的路径更适合把 connector 接入自己的产品、runtime 或企业基础设施。如果你只是想先体验连接各种
@@ -197,6 +210,7 @@ HTTP API。
 - [Runtime API 和 MCP](runtime-api.md)
 - [Fly.io 部署](fly-io.md)
 - [Cloudflare 部署](cloudflare.md)
+- [Docker 镜像（GHCR）](docker-ghcr.zh-CN.md)
 - [配置项](configuration.md)
 - [凭据和 OAuth](credentials.md)
 - [Catalog 格式](catalog-format.md)

@@ -32,6 +32,7 @@
     "label": "语言",
     "en": "English",
     "zh-CN": "简体中文",
+    "zh-TW": "繁體中文",
     "ja": "日本語",
     "ru": "Русский",
     "fr": "Français"
@@ -147,6 +148,9 @@
     "noSetupBadge": "无需设置",
     "unconfiguredBadge": "未连接",
     "oauthClientRequiredBadge": "需要 OAuth client",
+    "runtimeUnavailableBadge": "不可用",
+    "runtimeUnavailableTitle": "当前运行时不可用",
+    "runtimeUnavailableDescription": "{{name}} 仍保留在目录中供查阅，但当前运行时无法配置连接或执行操作。",
     "summary": {
       "actions": "操作",
       "auth": "鉴权",
@@ -161,7 +165,8 @@
       "noSetup": "这个提供商无需本地凭证即可运行。",
       "connected": "本地凭证已通过 {{authType}} 配置。",
       "oauthClientRequired": "{{name}} 需要先配置本地 OAuth client 才能开始 OAuth。",
-      "notConnected": "运行需要凭证的 {{name}} 操作前，请先配置本地凭证。"
+      "notConnected": "运行需要凭证的 {{name}} 操作前，请先配置本地凭证。",
+      "unavailable": "当前运行时无法配置连接。"
     },
     "noConnectionMethodTitle": "没有连接方式",
     "noConnectionMethodDescription": "这个提供商不需要本地凭证。",
@@ -260,18 +265,27 @@
   "runs": {
     "noRunsTitle": "暂无运行记录",
     "noRunsDescription": "运行一个操作后会显示最近执行历史。",
+    "action": "操作",
+    "actionPlaceholder": "按操作 ID 筛选",
+    "applyActionFilter": "应用操作筛选",
     "service": "服务",
     "allServices": "全部服务",
+    "caller": "调用方",
+    "allCallers": "全部调用方",
+    "status": "状态",
+    "allStatuses": "全部状态",
+    "copyExecutionId": "复制 execution ID",
+    "expandResult": "展开结果",
+    "collapseResult": "收起结果",
     "loadMore": "加载更多",
     "loadMoreFailed": "加载更多运行记录失败。",
     "table": {
       "action": "操作",
-      "caller": "调用方",
+      "context": "上下文",
       "status": "状态",
-      "started": "开始时间",
-      "duration": "耗时",
+      "timing": "时间",
       "input": "输入",
-      "error": "错误"
+      "result": "结果"
     }
   },
   "access": {
@@ -309,9 +323,16 @@
       "title": "API 参考",
       "description": "在 Scalar 中浏览本地运行时路由。"
     },
-    "mcpTools": {
-      "title": "MCP 工具",
-      "description": "{{count}} 个操作已暴露为本地工具。"
+    "mcp": {
+      "title": "MCP 连接",
+      "description": "将 Claude Desktop 或 Cursor 连接到本地运行时。",
+      "endpoint": "MCP 地址",
+      "copyEndpoint": "复制 MCP 地址",
+      "copiedEndpoint": "已复制 MCP 地址",
+      "configTitle": "JSON 配置",
+      "copyConfig": "复制 JSON 配置",
+      "copiedConfig": "已复制 JSON 配置",
+      "createToken": "生成 Runtime Token"
     },
     "openapi": {
       "title": "OpenAPI JSON",

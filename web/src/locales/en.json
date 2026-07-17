@@ -32,6 +32,7 @@
     "label": "Language",
     "en": "English",
     "zh-CN": "简体中文",
+    "zh-TW": "繁體中文",
     "ja": "日本語",
     "ru": "Русский",
     "fr": "Français"
@@ -147,6 +148,9 @@
     "noSetupBadge": "No setup",
     "unconfiguredBadge": "Not connected",
     "oauthClientRequiredBadge": "OAuth client required",
+    "runtimeUnavailableBadge": "Unavailable",
+    "runtimeUnavailableTitle": "Unavailable in this runtime",
+    "runtimeUnavailableDescription": "{{name}} remains visible for catalog reference, but connections and actions are unavailable in the current runtime.",
     "summary": {
       "actions": "Actions",
       "auth": "Auth",
@@ -161,7 +165,8 @@
       "noSetup": "This provider can run without local credentials.",
       "connected": "Local credentials are configured with {{authType}}.",
       "oauthClientRequired": "{{name}} needs a local OAuth client before OAuth can start.",
-      "notConnected": "Configure local credentials before running credentialed {{name}} actions."
+      "notConnected": "Configure local credentials before running credentialed {{name}} actions.",
+      "unavailable": "Connections cannot be configured in the current runtime."
     },
     "noConnectionMethodTitle": "No connection method",
     "noConnectionMethodDescription": "This provider does not need local credentials.",
@@ -260,18 +265,27 @@
   "runs": {
     "noRunsTitle": "No runs yet",
     "noRunsDescription": "Run an action to see recent execution history.",
+    "action": "Action",
+    "actionPlaceholder": "Filter by action ID",
+    "applyActionFilter": "Apply action filter",
     "service": "Service",
     "allServices": "All services",
+    "caller": "Caller",
+    "allCallers": "All callers",
+    "status": "Status",
+    "allStatuses": "All statuses",
+    "copyExecutionId": "Copy execution ID",
+    "expandResult": "Expand result",
+    "collapseResult": "Collapse result",
     "loadMore": "Load more",
     "loadMoreFailed": "Failed to load more runs.",
     "table": {
       "action": "Action",
-      "caller": "Caller",
+      "context": "Context",
       "status": "Status",
-      "started": "Started",
-      "duration": "Duration",
+      "timing": "Timing",
       "input": "Input",
-      "error": "Error"
+      "result": "Result"
     }
   },
   "access": {
@@ -309,9 +323,16 @@
       "title": "API Reference",
       "description": "Browse the local runtime routes in Scalar."
     },
-    "mcpTools": {
-      "title": "MCP Tools",
-      "description": "{{count}} actions exposed as local tools."
+    "mcp": {
+      "title": "MCP connection",
+      "description": "Connect Claude Desktop or Cursor to this local runtime.",
+      "endpoint": "MCP URL",
+      "copyEndpoint": "Copy MCP URL",
+      "copiedEndpoint": "Copied MCP URL",
+      "configTitle": "JSON configuration",
+      "copyConfig": "Copy JSON configuration",
+      "copiedConfig": "Copied JSON configuration",
+      "createToken": "Generate Runtime Token"
     },
     "openapi": {
       "title": "OpenAPI JSON",

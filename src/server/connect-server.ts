@@ -4,21 +4,30 @@ import type { ActionPolicyService } from "../core/action-policy.ts";
 import type { ActionSearchIndexProvider, ActionSearchResult } from "../core/action-search.ts";
 import type { IProviderLoader } from "../providers/provider-loader.ts";
 import type { LocalAuthOptions } from "./api/auth.ts";
+import type { RuntimeActionHttpResult } from "./api/runtime-api.ts";
 import type { ITransitFileService } from "./files/transit-file-store.ts";
 import type { Logger } from "./logger.ts";
-import type { RunLogListInput } from "./storage/runtime-store.ts";
+import type { IIdempotencyStore } from "./storage/idempotency-store.ts";
+import type { RunLogCaller, RunLogListInput } from "./storage/runtime-store.ts";
 import type { RuntimeTokenService } from "./storage/runtime-token-service.ts";
 import type { Context } from "hono";
 
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
-import { ConnectionError } from "../connection-service.ts";
+import { ConnectionError, defaultConnectionName } from "../connection-service.ts";
 import { DEFAULT_ACTION_SEARCH_LIMIT, createActionSearchIndexProvider, searchActions } from "../core/action-search.ts";
 import { optionalRecord, optionalString, requiredString } from "../core/cast.ts";
 import { createMcpServer, listMcpToolSummaries } from "../mcp.ts";
 import { OAuthClientConfigError, OAuthClientConfigService } from "../oauth/oauth-client-config-service.ts";
 import { OAuthFlowError, OAuthFlowService } from "../oauth/oauth-flow-service.ts";
+import {
+  ActionInputDepthError,
+  createIdempotencyExpiry,
+  hashActionRequest,
+  hashIdempotencyKey,
+  readIdempotencyKey,
+} from "./actions/action-idempotency.ts";
 import { ActionRunner } from "./actions/action-runner.ts";
 import { renderActionMarkdown } from "./api/action-markdown.ts";
 import { clearLocalAuthCookie, createLocalAuthMiddleware, readLocalAuthSession } from "./api/auth.ts";
@@ -29,10 +38,12 @@ import { createOpenApiDocument } from "./api/openapi.ts";
 import {
   mapConnectionErrorStatus,
   serializeRuntimeAction,
+  serializeRuntimeActionResult,
   serializeRuntimeActionService,
   serializeRuntimeConnectedApp,
+  serializeRuntimeFailure,
   serializeRuntimeProvider,
-  writeRuntimeActionResult,
+  writeRuntimeActionHttpResult,
   writeRuntimeFailure,
   writeRuntimeSuccess,
 } from "./api/runtime-api.ts";
@@ -51,6 +62,7 @@ export interface IConnectServerOptions {
   oauthFlow: OAuthFlowService;
   runtimeTokens: RuntimeTokenService;
   actions: ActionRunner;
+  idempotency: IIdempotencyStore;
   transitFiles: ITransitFileService;
   staticRoot?: string;
   auth?: LocalAuthOptions;
@@ -157,6 +169,7 @@ export class ConnectServer {
     app.delete("/api/connections/:service", (context) => this.disconnect(context, context.req.param("service")));
 
     app.get("/api/runs", (context) => this.listRuns(context));
+    app.get("/api/runs/:id", (context) => this.getRun(context, context.req.param("id")));
     app.post("/api/files", (context) => this.createTransitFile(context));
     app.get("/api/files/:fileId", (context) => this.getTransitFile(context, context.req.param("fileId")));
     app.delete("/api/files/:fileId", (context) => this.deleteTransitFile(context, context.req.param("fileId")));
@@ -262,6 +275,11 @@ export class ConnectServer {
     }
 
     return context.json(await this.options.actions.listRuns(query.input));
+  }
+
+  private async getRun(context: Context, id: string): Promise<Response> {
+    const run = await this.options.actions.getRun(id);
+    return run ? context.json(run) : jsonError(context, 404, "run_not_found", `Run not found: ${id}.`);
   }
 
   private async searchApiActions(context: Context): Promise<Response> {
@@ -386,15 +404,100 @@ export class ConnectServer {
     }
 
     const body = await readJsonBody(context);
+    const input = body.input ?? {};
+    const connectionName = readConnectionName(context, body);
+    const idempotencyKey = readIdempotencyKey(context.req.header("idempotency-key"));
+    if (!idempotencyKey.ok) {
+      return writeRuntimeFailure(context, {
+        status: 400,
+        errorCode: "invalid_input",
+        message: idempotencyKey.message,
+        meta: { actionId },
+      });
+    }
+
+    if (!idempotencyKey.key) {
+      return writeRuntimeActionHttpResult(context, await this.executeRuntimeAction(actionId, input, connectionName));
+    }
+
+    const now = new Date();
+    const keyHash = hashIdempotencyKey(idempotencyKey.key);
+    let requestHash: string;
+    try {
+      requestHash = hashActionRequest({
+        actionId,
+        connectionName: connectionName ?? defaultConnectionName,
+        input,
+      });
+    } catch (error) {
+      if (!(error instanceof ActionInputDepthError)) {
+        throw error;
+      }
+      return writeRuntimeFailure(context, {
+        status: 400,
+        errorCode: "invalid_input",
+        message: error.message,
+        meta: { actionId },
+      });
+    }
+    const claimId = crypto.randomUUID();
+    const claim = await this.options.idempotency.claim({
+      keyHash,
+      requestHash,
+      claimId,
+      now: now.toISOString(),
+      expiresAt: createIdempotencyExpiry(now),
+    });
+
+    if (claim.kind === "conflict") {
+      return writeRuntimeFailure(context, {
+        status: 409,
+        errorCode: "idempotency_key_conflict",
+        message: "Idempotency-Key has already been used with a different request.",
+        meta: { actionId },
+      });
+    }
+    if (claim.kind === "in_progress") {
+      return writeRuntimeFailure(context, {
+        status: 409,
+        errorCode: "idempotency_request_in_progress",
+        message: "A request with this Idempotency-Key is still in progress.",
+        meta: { actionId },
+      });
+    }
+    if (claim.kind === "completed") {
+      return writeRuntimeActionHttpResult(context, claim.response);
+    }
+
+    const result = await this.executeRuntimeAction(actionId, input, connectionName);
+    const completed = await this.options.idempotency.complete({
+      keyHash,
+      requestHash,
+      claimId,
+      response: result,
+      expiresAt: createIdempotencyExpiry(new Date()),
+    });
+    if (!completed) {
+      throw new Error("Idempotency claim was replaced before completion.");
+    }
+
+    return writeRuntimeActionHttpResult(context, result);
+  }
+
+  private async executeRuntimeAction(
+    actionId: string,
+    input: unknown,
+    connectionName: string | undefined,
+  ): Promise<RuntimeActionHttpResult> {
     try {
       const run = await this.options.actions.run({
         actionId,
-        input: body.input ?? {},
+        input,
         caller: "http",
-        connectionName: readConnectionName(context, body),
+        connectionName,
       });
       if (!run) {
-        return writeRuntimeFailure(context, {
+        return serializeRuntimeFailure({
           status: 404,
           errorCode: "invalid_input",
           message: `unknown action: ${actionId}`,
@@ -402,10 +505,15 @@ export class ConnectServer {
         });
       }
 
-      return writeRuntimeActionResult(context, { actionId, executionId: run.executionId, result: run.result });
+      return serializeRuntimeActionResult({
+        actionId,
+        executionId: run.executionId,
+        auditPersisted: run.auditPersisted,
+        result: run.result,
+      });
     } catch (error) {
       if (error instanceof ConnectionError) {
-        return writeRuntimeFailure(context, {
+        return serializeRuntimeFailure({
           status: mapConnectionErrorStatus(error),
           errorCode: error.code,
           message: error.message,
@@ -629,7 +737,7 @@ export class ConnectServer {
       );
       return context.json(authorization);
     } catch (error) {
-      if (error instanceof OAuthFlowError) {
+      if (error instanceof OAuthFlowError || error instanceof ConnectionError) {
         this.options.logger?.warn(
           {
             errorCode: error.code,
@@ -707,6 +815,25 @@ export class ConnectServer {
       hasCode: Boolean(code),
     };
     this.options.logger?.info(logContext, "oauth callback received");
+    const providerError = context.req.query("error");
+    if (providerError) {
+      const providerErrorDescription = context.req.query("error_description");
+      this.options.logger?.warn(
+        {
+          ...logContext,
+          errorCode: "oauth_provider_error",
+          providerError,
+          providerErrorDescription,
+        },
+        "oauth callback failed",
+      );
+      return jsonError(
+        context,
+        400,
+        "oauth_provider_error",
+        `OAuth provider returned error "${providerError}"${providerErrorDescription ? `: ${providerErrorDescription}` : "."}`,
+      );
+    }
     if (!state || !code) {
       this.options.logger?.warn(
         {
@@ -729,7 +856,7 @@ export class ConnectServer {
         "oauth callback completed",
       );
     } catch (error) {
-      if (error instanceof OAuthFlowError) {
+      if (error instanceof OAuthFlowError || error instanceof ConnectionError) {
         this.options.logger?.warn(
           {
             ...logContext,
@@ -737,7 +864,7 @@ export class ConnectServer {
           },
           "oauth callback failed",
         );
-        return jsonError(context, 400, error.code, error.message);
+        return jsonError(context, error.code === "unknown_service" ? 404 : 400, error.code, error.message);
       }
       throw error;
     }
@@ -884,8 +1011,33 @@ function readRunLogListInput(context: Context): RunLogListQuery {
   if (service !== undefined) {
     input.service = service;
   }
+  const actionId = optionalString(context.req.query("actionId"));
+  if (actionId !== undefined) {
+    if (actionId.length > 256) {
+      return { ok: false, message: "actionId must be at most 256 characters." };
+    }
+    input.actionId = actionId;
+  }
+  const caller = optionalString(context.req.query("caller"));
+  if (caller !== undefined) {
+    if (!isRunLogCaller(caller)) {
+      return { ok: false, message: "caller must be one of http, mcp, or web." };
+    }
+    input.caller = caller;
+  }
+  const ok = optionalString(context.req.query("ok"));
+  if (ok !== undefined) {
+    if (ok !== "true" && ok !== "false") {
+      return { ok: false, message: "ok must be true or false." };
+    }
+    input.ok = ok === "true";
+  }
 
   return { ok: true, input };
+}
+
+function isRunLogCaller(value: string): value is RunLogCaller {
+  return value === "http" || value === "mcp" || value === "web";
 }
 
 function readSearchQuery(context: Context, defaultLimit = DEFAULT_ACTION_SEARCH_LIMIT): SearchQuery {

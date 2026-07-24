@@ -26,14 +26,19 @@ export interface CredentialField {
 
 export type JsonSchema = Record<string, unknown>;
 
+/**
+ * Action as returned by `/api/providers`, which omits the JSON schemas to keep
+ * the catalog listing small. Use {@link FullActionDefinition} where schemas are
+ * required; load it from `/api/actions/:actionId`.
+ */
 export interface ActionDefinition {
   id: string;
   service: string;
   name: string;
   description: string;
   requiredScopes: string[];
-  inputSchema: JsonSchema;
-  outputSchema: JsonSchema;
+  inputSchema?: JsonSchema;
+  outputSchema?: JsonSchema;
   execution: {
     locallyExecutable: boolean;
     catalogOnly: boolean;
@@ -41,6 +46,12 @@ export interface ActionDefinition {
     noAuthRunnable: boolean;
     needsCredential: boolean;
   };
+}
+
+/** Action with schemas, as returned by `/api/actions/:actionId`. */
+export interface FullActionDefinition extends ActionDefinition {
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
 }
 
 export interface ProviderDefinition {
@@ -436,7 +447,7 @@ export function parameterSummaries(
   }));
 }
 
-export function buildActionExamples(action: ActionDefinition): { curl: string; typescript: string } {
+export function buildActionExamples(action: FullActionDefinition): { curl: string; typescript: string } {
   const body = { input: JSON.parse(exampleInput(action.inputSchema)) as unknown };
   const bodyText = JSON.stringify(body, null, 2);
   return {

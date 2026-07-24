@@ -166,6 +166,63 @@ describe("ConnectServer", () => {
     });
   });
 
+  it("lists providers without action schemas and serves full schemas per action", async () => {
+    const app = createTestServer([
+      {
+        ...apiKeyProvider,
+        actions: [
+          {
+            id: "example.echo",
+            service: "example",
+            name: "echo",
+            description: "Echo the input.",
+            requiredScopes: [],
+            providerPermissions: [],
+            inputSchema: { type: "object", properties: { message: { type: "string" } } },
+            outputSchema: { type: "object", properties: { message: { type: "string" } } },
+          },
+        ],
+      },
+    ]).createApp();
+
+    const listResponse = await app.request("/api/providers");
+    const listed = (await listResponse.json()) as Array<{
+      service: string;
+      actions: Array<Record<string, unknown>>;
+    }>;
+    const listedAction = listed[0]?.actions[0];
+
+    expect(listedAction).toBeDefined();
+    expect(listedAction).not.toHaveProperty("inputSchema");
+    expect(listedAction).not.toHaveProperty("outputSchema");
+    expect(listedAction).toHaveProperty("id");
+    expect(listedAction).toHaveProperty("execution");
+
+    const actionResponse = await app.request(`/api/actions/${String(listedAction?.id)}`);
+    await expect(actionResponse.json()).resolves.toHaveProperty("inputSchema");
+  });
+
+  it("answers /api/providers conditional requests with 304 when the ETag matches", async () => {
+    const app = createTestServer([apiKeyProvider]).createApp();
+
+    const first = await app.request("/api/providers");
+    const etag = first.headers.get("etag");
+    expect(etag).toBeTruthy();
+    expect(etag).toMatch(/^W\//);
+
+    const revalidated = await app.request("/api/providers", {
+      headers: { "if-none-match": etag ?? "" },
+    });
+    expect(revalidated.status).toBe(304);
+    expect(await revalidated.text()).toBe("");
+    expect(revalidated.headers.get("etag")).toBe(etag);
+
+    const stale = await app.request("/api/providers", {
+      headers: { "if-none-match": 'W/"deadbeef"' },
+    });
+    expect(stale.status).toBe(200);
+  });
+
   it("serves catalog and standard connection errors without opening a port", async () => {
     const app = createTestServer([apiKeyProvider]).createApp();
 
@@ -174,7 +231,7 @@ describe("ConnectServer", () => {
     expect(catalogResponse.headers.get("cloudflare-cdn-cache-control")).toBe(
       "public, max-age=31536000, stale-while-revalidate=86400",
     );
-    expect(catalogResponse.headers.get("vary")).toBe("Authorization, Cookie");
+    expect(catalogResponse.headers.get("vary")).toBe("Authorization, Cookie, Accept-Encoding");
     await expect(catalogResponse.json()).resolves.toMatchObject({
       service: "example",
       displayName: "Example",

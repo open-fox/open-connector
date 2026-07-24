@@ -3,6 +3,7 @@ import type {
   AppData,
   ConnectionRecord,
   ExecutionResult,
+  FullActionDefinition,
   JsonSchema,
   RuntimeActionResponse,
 } from "./model";
@@ -13,6 +14,7 @@ import { useClipboard } from "foxact/use-clipboard";
 import { Check, ChevronRight, Code2, Copy, ExternalLink, Loader2, Play, Search, TerminalSquare, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import { apiGet } from "./api";
 import {
   buildActionExamples,
   exampleInput,
@@ -42,7 +44,7 @@ interface ActionDetailProps {
 }
 
 interface ExampleTabsProps {
-  action: ActionDefinition;
+  action: FullActionDefinition;
   examples: { curl: string; typescript: string };
 }
 
@@ -213,7 +215,35 @@ export function ActionsPage(props: ActionsPageProps): ReactNode {
 function ActionDetail(props: ActionDetailProps): ReactNode {
   const t = useTranslate();
   const [debugOpen, setDebugOpen] = useState(false);
-  const examples = useMemo(() => buildActionExamples(props.action), [props.action]);
+  // `/api/providers` omits action schemas, so the detail view loads the full
+  // action on demand. Header and metadata render immediately from the summary.
+  const [fullAction, setFullAction] = useState<FullActionDefinition | null>(null);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+  const actionId = props.action.id;
+
+  useEffect(() => {
+    let cancelled = false;
+    setFullAction(null);
+    setSchemaError(null);
+    setDebugOpen(false);
+    apiGet<FullActionDefinition>(`/api/actions/${encodeURIComponent(actionId)}`)
+      .then((action) => {
+        if (!cancelled) {
+          setFullAction(action);
+        }
+      })
+      .catch((caught: unknown) => {
+        if (!cancelled) {
+          setSchemaError(caught instanceof Error ? caught.message : String(caught));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actionId]);
+
+  const examples = useMemo(() => (fullAction ? buildActionExamples(fullAction) : null), [fullAction]);
 
   return (
     <>
@@ -237,7 +267,7 @@ function ActionDetail(props: ActionDetailProps): ReactNode {
       </div>
       <p className="detail-description">{props.action.description}</p>
       <div className="button-row action-command-row">
-        <Button disabled={!props.action.execution.locallyExecutable} onClick={() => setDebugOpen(true)}>
+        <Button disabled={!props.action.execution.locallyExecutable || !fullAction} onClick={() => setDebugOpen(true)}>
           <Play size={16} />
           {t("actions.debugAction")}
         </Button>
@@ -255,11 +285,21 @@ function ActionDetail(props: ActionDetailProps): ReactNode {
         <h3>{t("actions.requiredScopes")}</h3>
         <TagList values={props.action.requiredScopes} empty={t("providers.noScopes")} />
       </div>
-      <ParameterList schema={props.action.inputSchema} />
-      <ExampleTabs action={props.action} examples={examples} />
-      {debugOpen ? (
+      {fullAction && examples ? (
+        <>
+          <ParameterList schema={fullAction.inputSchema} />
+          <ExampleTabs action={fullAction} examples={examples} />
+        </>
+      ) : schemaError ? (
+        <p className="detail-description">{schemaError}</p>
+      ) : (
+        <p className="detail-description">
+          <Loader2 className="spin" size={16} /> {t("actions.loadingDetails")}
+        </p>
+      )}
+      {debugOpen && fullAction ? (
         <RunActionModal
-          action={props.action}
+          action={fullAction}
           connections={props.connections}
           onRefresh={props.onRefresh}
           onClose={() => setDebugOpen(false)}
@@ -357,7 +397,7 @@ function ExampleTabs(props: ExampleTabsProps): ReactNode {
 }
 
 interface RunActionModalProps {
-  action: ActionDefinition;
+  action: FullActionDefinition;
   connections: ConnectionRecord[];
   onRefresh(): void;
   onClose(): void;

@@ -280,7 +280,8 @@
     "run": "运行",
     "running": "运行中",
     "runningAction": "正在运行操作...",
-    "actionFailed": "操作失败。"
+    "actionFailed": "操作失败。",
+    "loadingDetails": "正在加载动作详情..."
   },
   "runs": {
     "noRunsTitle": "暂无运行记录",

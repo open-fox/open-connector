@@ -280,7 +280,8 @@
     "run": "Exécuter",
     "running": "Exécution",
     "runningAction": "Exécution de l’action...",
-    "actionFailed": "Échec de l’action."
+    "actionFailed": "Échec de l’action.",
+    "loadingDetails": "Chargement des détails de l’action…"
   },
   "runs": {
     "noRunsTitle": "Aucune exécution",

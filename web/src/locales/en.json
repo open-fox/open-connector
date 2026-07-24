@@ -280,7 +280,8 @@
     "run": "Run",
     "running": "Running",
     "runningAction": "Running action...",
-    "actionFailed": "Action failed."
+    "actionFailed": "Action failed.",
+    "loadingDetails": "Loading action details..."
   },
   "runs": {
     "noRunsTitle": "No runs yet",

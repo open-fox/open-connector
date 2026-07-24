@@ -280,7 +280,8 @@
     "run": "執行",
     "running": "執行中",
     "runningAction": "正在執行動作...",
-    "actionFailed": "動作執行失敗。"
+    "actionFailed": "動作執行失敗。",
+    "loadingDetails": "正在載入動作詳情..."
   },
   "runs": {
     "noRunsTitle": "尚無執行記錄",

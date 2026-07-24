@@ -280,7 +280,8 @@
     "run": "実行",
     "running": "実行中",
     "runningAction": "アクションを実行中...",
-    "actionFailed": "アクションに失敗しました。"
+    "actionFailed": "アクションに失敗しました。",
+    "loadingDetails": "アクションの詳細を読み込み中..."
   },
   "runs": {
     "noRunsTitle": "実行履歴はまだありません",

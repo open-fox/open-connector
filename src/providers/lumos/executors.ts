@@ -1,9 +1,16 @@
-import type { CredentialValidationResult, CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { LumosActionName } from "./actions.ts";
+import type {
+  CredentialValidationResult,
+  CredentialValidators,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
+import type { ProviderRequestContext } from "../provider-runtime.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString, requiredRecord } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
 const service = "lumos";
 const lumosApiBaseUrl = "https://api.lumos.com";
@@ -13,7 +20,7 @@ const lumosDefaultPageSize = 50;
 type LumosRequestPhase = "validate" | "execute";
 type LumosActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const lumosActionHandlers: Record<LumosActionName, LumosActionHandler> = {
+export const lumosActionHandlers: ProviderActionHandlers<"lumos", LumosActionHandler> = {
   async list_appstore_apps(input, context) {
     const payload = await requestLumosJson({
       apiKey: context.apiKey,
@@ -75,6 +82,16 @@ export const lumosActionHandlers: Record<LumosActionName, LumosActionHandler> = 
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, lumosActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: lumosApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     return validateLumosCredential(input.apiKey, fetcher, signal);
@@ -100,7 +117,6 @@ async function validateLumosCredential(
       accountId: "api_key",
       displayName: "Lumos API Token",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: lumosApiBaseUrl,
       validationEndpoint: "/appstore/apps?page=1&size=1",
@@ -113,7 +129,7 @@ async function requestLumosJson(input: {
   apiKey: string;
   path: string;
   query?: URLSearchParams;
-  context: Pick<ApiKeyProviderContext, "fetcher" | "signal">;
+  context: ProviderRequestContext;
   phase: LumosRequestPhase;
 }): Promise<unknown> {
   const url = new URL(input.path, lumosApiBaseUrl);

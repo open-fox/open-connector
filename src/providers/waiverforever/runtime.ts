@@ -1,4 +1,5 @@
-import type { ApiKeyProviderContext, ProviderFetch } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import { compactObject, optionalBoolean, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
 import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
@@ -14,7 +15,7 @@ export interface WaiverForeverUserInfo {
   raw: Record<string, unknown>;
 }
 
-export const waiverforeverActionHandlers: Record<string, WaiverForeverActionHandler> = {
+export const waiverforeverActionHandlers: ProviderActionHandlers<"waiverforever", WaiverForeverActionHandler> = {
   get_user_info(_input, context) {
     return getWaiverForeverUserInfo(context.apiKey, context.fetcher, context.signal);
   },
@@ -165,7 +166,7 @@ async function executeListWaiverRequests(
 
 async function waiverforeverGetJson(
   path: string,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: WaiverForeverRequestPhase = "execute",
   query?: URLSearchParams,
 ): Promise<unknown> {
@@ -186,7 +187,7 @@ async function waiverforeverGetJson(
 async function waiverforeverPostJson(
   path: string,
   body: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
 ): Promise<unknown> {
   return waiverforeverFetchJson(
     new URL(path, waiverforeverApiBaseUrl),

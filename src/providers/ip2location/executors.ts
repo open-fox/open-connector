@@ -1,9 +1,10 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { Ip2locationActionName } from "./actions.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "ip2location";
 const ip2locationApiBaseUrl = "https://api.ip2location.io";
@@ -13,8 +14,7 @@ const ip2locationValidationIp = "8.8.8.8";
 
 type Ip2locationRequestPhase = "validate" | "execute";
 type Ip2locationQueryValue = string | number | undefined;
-type Ip2locationActionContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
-type Ip2locationActionHandler = (input: Record<string, unknown>, context: Ip2locationActionContext) => Promise<unknown>;
+type Ip2locationActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
 interface Ip2locationRequestInput {
   baseUrl: string;
@@ -23,7 +23,7 @@ interface Ip2locationRequestInput {
   phase: Ip2locationRequestPhase;
 }
 
-export const ip2locationActionHandlers: Record<Ip2locationActionName, Ip2locationActionHandler> = {
+export const ip2locationActionHandlers: ProviderActionHandlers<"ip2location", Ip2locationActionHandler> = {
   get_ip_geolocation(input, context) {
     return requestIp2locationJson(
       {
@@ -92,7 +92,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: "api_key",
         displayName: "IP2Location.io API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: ip2locationApiBaseUrl,
         domainWhoisApiBaseUrl: ip2locationDomainWhoisApiBaseUrl,
@@ -106,7 +105,7 @@ export const credentialValidators: CredentialValidators = {
 
 async function requestIp2locationJson(
   input: Ip2locationRequestInput,
-  context: Ip2locationActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   let response: Response;
   let payload: unknown;
@@ -232,3 +231,9 @@ function readRequiredString(value: unknown, fieldName: string): string {
   }
   return text;
 }
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: "https://api.ip2location.io",
+  auth: { type: "api_key_query", name: "key" },
+});

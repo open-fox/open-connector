@@ -1,11 +1,10 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { MailerliteActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
-import { compactObject, optionalInteger, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
+import { providerUserAgent, ProviderRequestError, requiredInputString } from "../provider-runtime.ts";
 
-const mailerliteApiBaseUrl = "https://connect.mailerlite.com/api";
+export const mailerliteApiBaseUrl: string = "https://connect.mailerlite.com/api";
 const validationPath = "/groups";
 
 type MailerliteMode = "validate" | "execute";
@@ -13,14 +12,14 @@ type MailerliteActionHandler = (input: Record<string, unknown>, context: ApiKeyP
 
 interface MailerliteRequestOptions {
   path: string;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   mode: MailerliteMode;
   method?: string;
   query?: Record<string, string | number | undefined>;
   body?: unknown;
 }
 
-export const mailerliteActionHandlers: Record<MailerliteActionName, MailerliteActionHandler> = {
+export const mailerliteActionHandlers: ProviderActionHandlers<"mailerlite", MailerliteActionHandler> = {
   list_subscribers(input, context) {
     return requestMailerliteJson({
       path: "/subscribers",
@@ -196,7 +195,6 @@ export async function validateMailerliteCredential(
       accountId: "mailerlite",
       displayName: "MailerLite API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: mailerliteApiBaseUrl,
       validationEndpoint: validationPath,
@@ -327,10 +325,6 @@ function extractMailerliteErrorMessage(payload: Record<string, unknown>): string
     }
   }
   return undefined;
-}
-
-function requiredInputString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, (message) => new ProviderRequestError(400, message));
 }
 
 function optionalStringArray(value: unknown): string[] | undefined {

@@ -1,10 +1,11 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
 import { encodePathSegment } from "../../core/request.ts";
 import { arrayPayload, firstString, objectPayload, requestJson } from "../http-json-runtime.ts";
-import { defineApiKeyProviderExecutors } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
 
 const service = "recharge";
 const apiBaseUrl = "https://api.rechargeapps.com";
@@ -27,7 +28,7 @@ const resources: Record<ResourceName, ResourceSpec> = {
   product: { singular: "product", plural: "products", path: "/products" },
 };
 
-export const rechargeActionHandlers: Record<string, Handler> = {
+export const rechargeActionHandlers: ProviderActionHandlers<"recharge", Handler> = {
   list_customers(input, context) {
     return listResource(resources.customer, input, context);
   },
@@ -62,6 +63,18 @@ export const rechargeActionHandlers: Record<string, Handler> = {
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, rechargeActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: apiBaseUrl,
+  auth: { type: "api_key_header", name: "X-Recharge-Access-Token" },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+    headers.set("content-type", "application/json");
+    headers.set("x-recharge-version", apiVersion);
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const payload = objectPayload(
@@ -80,7 +93,6 @@ export const credentialValidators: CredentialValidators = {
           firstString(store, ["name", "store_name"]) ??
           "Recharge API Token",
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl,
         apiVersion,
@@ -93,7 +105,7 @@ export const credentialValidators: CredentialValidators = {
 async function listResource(
   spec: ResourceSpec,
   input: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const raw = objectPayload(await rechargeRequest(spec.path, context, { query: rechargeQuery(input) }), spec.plural);
   return {
@@ -107,7 +119,7 @@ async function listResource(
 async function getResource(
   spec: ResourceSpec,
   input: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const id = encodePathSegment(requiredString(input.id, "id"));
   const raw = objectPayload(
@@ -122,7 +134,7 @@ async function getResource(
 
 function rechargeRequest(
   path: string,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   options:
     | "validate"
     | {

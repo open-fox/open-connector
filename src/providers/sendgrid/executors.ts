@@ -1,12 +1,15 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { SendgridActionName } from "./actions.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 
 import { compactObject, optionalNumber, optionalRawString, optionalRecord } from "../../core/cast.ts";
+import { requireApiKeyCredential } from "../provider-credentials.ts";
+import { defineProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
 import {
-  defineProviderExecutors,
   providerUserAgent,
   ProviderRequestError,
-  requireApiKeyCredential,
+  providerInputError,
+  providerResponseError,
 } from "../provider-runtime.ts";
 
 const sendgridDefaultBaseUrl = "https://api.sendgrid.com";
@@ -25,7 +28,7 @@ interface SendgridValidationResult {
     accountId: string;
     displayName: string;
   };
-  grantedScopes: string[];
+  grantedScopes?: string[];
   metadata: Record<string, unknown>;
 }
 
@@ -63,7 +66,7 @@ function buildValidationProviderMetadata(
   });
 }
 
-export const sendgridActionHandlers: Record<SendgridActionName, SendgridActionHandler> = {
+export const sendgridActionHandlers: ProviderActionHandlers<"sendgrid", SendgridActionHandler> = {
   get_account_info(_input, context) {
     return getAccountInfo(context);
   },
@@ -76,7 +79,7 @@ export const sendgridActionHandlers: Record<SendgridActionName, SendgridActionHa
   send_email(input, context) {
     return sendEmail(input, context);
   },
-} satisfies Record<SendgridActionName, SendgridActionHandler>;
+};
 
 export const executors: ProviderExecutors = defineProviderExecutors<SendgridActionContext>({
   service: "sendgrid",
@@ -88,6 +91,19 @@ export const executors: ProviderExecutors = defineProviderExecutors<SendgridActi
       baseUrl: resolveSendgridBaseUrl(credential.values.baseUrl ?? credential.metadata.baseUrl),
       fetcher,
     };
+  },
+});
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service: "sendgrid",
+  async baseUrl(context) {
+    const credential = await requireApiKeyCredential(context, "sendgrid");
+    return resolveSendgridBaseUrl(credential.values.baseUrl ?? credential.metadata.baseUrl);
+  },
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    if (!headers.has("accept")) headers.set("accept", "application/json");
   },
 });
 
@@ -270,7 +286,6 @@ async function probeSendgridUserEmail(
           accountId: email ?? "api_key",
           displayName: email ?? "SendGrid API Key",
         },
-        grantedScopes: [],
         metadata: buildValidationProviderMetadata(baseUrl, "/v3/user/email", {
           email: email ?? undefined,
         }),
@@ -303,7 +318,6 @@ async function probeSendgridAccountInfo(
           accountId: "api_key",
           displayName: "SendGrid API Key",
         },
-        grantedScopes: [],
         metadata: buildValidationProviderMetadata(baseUrl, "/v3/user/account"),
       },
     };
@@ -338,7 +352,6 @@ async function probeSendgridTemplates(
           accountId: "api_key",
           displayName: "SendGrid API Key",
         },
-        grantedScopes: [],
         metadata: buildValidationProviderMetadata(baseUrl, sendgridTemplatesPath),
       },
     };
@@ -370,7 +383,6 @@ async function probeSendgridMailSend(
           accountId: "api_key",
           displayName: "SendGrid API Key",
         },
-        grantedScopes: [],
         metadata: buildValidationProviderMetadata(baseUrl, sendgridMailSendPath),
       },
     };
@@ -467,13 +479,13 @@ function sendgridHeaders(apiKey: string, hasBody: boolean) {
 function mapSendgridError(status: number, message: string, mode: "validate" | "execute") {
   if (status === 401) {
     if (mode === "validate") {
-      return new ProviderRequestError(400, message);
+      return providerInputError(message);
     }
     return new ProviderRequestError(401, message);
   }
   if (status === 403) {
     if (mode === "validate") {
-      return new ProviderRequestError(400, message);
+      return providerInputError(message);
     }
     return new ProviderRequestError(403, message);
   }
@@ -481,9 +493,9 @@ function mapSendgridError(status: number, message: string, mode: "validate" | "e
     return new ProviderRequestError(429, message);
   }
   if (status === 400 || status === 404) {
-    return new ProviderRequestError(400, message);
+    return providerInputError(message);
   }
-  return new ProviderRequestError(502, message);
+  return providerResponseError(message);
 }
 
 async function readSendgridError(response: Response): Promise<SendgridErrorInfo> {

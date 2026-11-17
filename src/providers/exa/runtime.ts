@@ -1,13 +1,12 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { ExaActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
 import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
-const exaApiBaseUrl = "https://api.exa.ai";
+export const exaApiBaseUrl = "https://api.exa.ai";
 
-type ExaContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
 type ExaActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
 interface ExaRequestInput {
@@ -17,7 +16,7 @@ interface ExaRequestInput {
   mode?: "validate" | "execute";
 }
 
-export const exaActionHandlers: Record<ExaActionName, ExaActionHandler> = {
+export const exaActionHandlers: ProviderActionHandlers<"exa", ExaActionHandler> = {
   search(input, context) {
     assertDomainFilters(input);
     return exaRequest({ method: "POST", path: "/search", body: input }, context);
@@ -60,7 +59,6 @@ export async function validateExaApiKey(
       accountId: "api_key",
       displayName: "Exa API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       validationEndpoint: "/search",
       validationQuery: "exa",
@@ -70,7 +68,7 @@ export async function validateExaApiKey(
   };
 }
 
-async function exaRequest(input: ExaRequestInput, context: ExaContext): Promise<unknown> {
+async function exaRequest(input: ExaRequestInput, context: ApiKeyProviderContext): Promise<unknown> {
   const response = await exaRawRequest(input, context);
   if (!response.ok) {
     throw await buildExaError(response, input.mode ?? "execute");
@@ -87,7 +85,7 @@ async function exaRequest(input: ExaRequestInput, context: ExaContext): Promise<
   }
 }
 
-async function exaRawRequest(input: ExaRequestInput, context: ExaContext): Promise<Response> {
+async function exaRawRequest(input: ExaRequestInput, context: ApiKeyProviderContext): Promise<Response> {
   try {
     return await context.fetcher(new URL(input.path, exaApiBaseUrl), {
       method: input.method ?? "POST",

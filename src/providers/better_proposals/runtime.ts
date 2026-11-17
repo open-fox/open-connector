@@ -1,5 +1,6 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
 import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
@@ -8,7 +9,6 @@ const betterProposalsApiBaseUrl = "https://api.betterproposals.io";
 const validationPath = "/settings";
 
 type RequestPhase = "validate" | "execute";
-type BetterProposalsContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
 type ActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
 const proposalListPaths: Record<string, string> = {
@@ -20,7 +20,7 @@ const proposalListPaths: Record<string, string> = {
   list_paid_proposals: "/proposal/paid",
 };
 
-export const betterProposalsActionHandlers: Record<string, ActionHandler> = {
+export const betterProposalsActionHandlers: ProviderActionHandlers<"better_proposals", ActionHandler> = {
   get_settings(_input, context) {
     return getResource("/settings", context);
   },
@@ -102,7 +102,6 @@ export async function validateBetterProposalsCredential(
       accountId: "better-proposals-api-key",
       displayName: "Better Proposals API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: betterProposalsApiBaseUrl,
       validationEndpoint: validationPath,
@@ -114,7 +113,7 @@ export async function validateBetterProposalsCredential(
 async function listResources(
   path: string,
   input: Record<string, unknown>,
-  context: BetterProposalsContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const query = compactObject({
     page: readOptionalPositiveInteger(input.page, "page"),
@@ -131,7 +130,7 @@ async function listResources(
   };
 }
 
-async function getResource(path: string, context: BetterProposalsContext): Promise<Record<string, unknown>> {
+async function getResource(path: string, context: ApiKeyProviderContext): Promise<Record<string, unknown>> {
   const payload = await getJson(path, context, "execute");
   const record = requireObjectPayload(payload);
 
@@ -144,7 +143,7 @@ async function getResource(path: string, context: BetterProposalsContext): Promi
 
 async function getJson(
   path: string,
-  context: BetterProposalsContext,
+  context: ApiKeyProviderContext,
   phase: RequestPhase,
   query: Record<string, unknown> = {},
 ): Promise<unknown> {

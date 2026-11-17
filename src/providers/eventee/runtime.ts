@@ -1,15 +1,14 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { EventeeActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
 import { isAbortLikeError, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
-const eventeeApiBaseUrl = "https://api.eventee.com/public/v1";
+export const eventeeApiBaseUrl = "https://api.eventee.com/public/v1";
 const eventeeValidationPath = "/groups";
 
 type EventeeRequestMode = "validate" | "execute";
-type EventeeContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
 type EventeeActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
 interface EventeeRequestOptions {
@@ -17,7 +16,7 @@ interface EventeeRequestOptions {
   mode: EventeeRequestMode;
 }
 
-export const eventeeActionHandlers: Record<EventeeActionName, EventeeActionHandler> = {
+export const eventeeActionHandlers: ProviderActionHandlers<"eventee", EventeeActionHandler> = {
   async get_event_content(_input, context) {
     const payload = await requestEventeeObject({ path: "/content", mode: "execute" }, context);
     return {
@@ -61,7 +60,6 @@ export async function validateEventeeCredential(
       accountId: "api_token",
       displayName: "Eventee API Token",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: eventeeApiBaseUrl,
       validationEndpoint: eventeeValidationPath,
@@ -70,7 +68,7 @@ export async function validateEventeeCredential(
   };
 }
 
-async function requestEventeeJson(options: EventeeRequestOptions, context: EventeeContext): Promise<unknown> {
+async function requestEventeeJson(options: EventeeRequestOptions, context: ApiKeyProviderContext): Promise<unknown> {
   let response: Response;
   try {
     response = await context.fetcher(`${eventeeApiBaseUrl}${options.path}`, {
@@ -102,7 +100,7 @@ async function requestEventeeJson(options: EventeeRequestOptions, context: Event
 
 async function requestEventeeObject(
   options: EventeeRequestOptions,
-  context: EventeeContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const payload = await requestEventeeJson(options, context);
   const record = optionalRecord(payload);
@@ -112,7 +110,7 @@ async function requestEventeeObject(
   return record;
 }
 
-async function requestEventeeArray(options: EventeeRequestOptions, context: EventeeContext): Promise<unknown[]> {
+async function requestEventeeArray(options: EventeeRequestOptions, context: ApiKeyProviderContext): Promise<unknown[]> {
   return requireArrayField(await requestEventeeJson(options, context), "array payload");
 }
 

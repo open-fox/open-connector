@@ -1,15 +1,17 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "cohere";
 const cohereApiBaseUrl = "https://api.cohere.com";
 
 type CohereActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const cohereActionHandlers: Record<string, CohereActionHandler> = {
+export const cohereActionHandlers: ProviderActionHandlers<"cohere", CohereActionHandler> = {
   chat(input, context) {
     assertStreamingDisabled(input);
     return coherePost(context, "/v2/chat", input);
@@ -25,6 +27,13 @@ export const cohereActionHandlers: Record<string, CohereActionHandler> = {
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, cohereActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: cohereApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     await cohereGet({ apiKey: input.apiKey, fetcher, signal }, "/v1/models?page_size=1", "validate");
@@ -32,7 +41,6 @@ export const credentialValidators: CredentialValidators = {
       profile: {
         displayName: "Cohere API Key",
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl: cohereApiBaseUrl,
         validationEndpoint: "/v1/models",
@@ -63,7 +71,7 @@ async function coherePost(
 }
 
 async function cohereGet(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   path: string,
   mode: "validate" | "execute" = "execute",
 ): Promise<unknown> {

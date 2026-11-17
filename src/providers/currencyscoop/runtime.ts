@@ -1,5 +1,4 @@
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { CurrencyscoopActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalString } from "../../core/cast.ts";
 import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
@@ -9,7 +8,7 @@ type CurrencyscoopActionHandler = (input: Record<string, unknown>, context: ApiK
 
 export const currencyscoopApiBaseUrl = "https://api.currencybeacon.com/v1";
 
-export const currencyscoopActionHandlers: Record<CurrencyscoopActionName, CurrencyscoopActionHandler> = {
+export const currencyscoopActionHandlers: ProviderActionHandlers<"currencyscoop", CurrencyscoopActionHandler> = {
   get_currencies(_input, context) {
     return executeGetCurrencies(context);
   },
@@ -33,7 +32,6 @@ export async function validateCurrencyscoopCredential(
   signal?: AbortSignal,
 ): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   await currencyscoopRequest(
@@ -52,7 +50,6 @@ export async function validateCurrencyscoopCredential(
       accountId: "api_key",
       displayName: "CurrencyBeacon API Key",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: currencyscoopApiBaseUrl,
       validationEndpoint: "/latest",
@@ -171,7 +168,7 @@ interface CurrencyscoopRequestInput {
 
 async function currencyscoopRequest(
   input: CurrencyscoopRequestInput,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
 ): Promise<{ meta: Record<string, unknown>; response: unknown }> {
   let response: Response;
   let payload: unknown;

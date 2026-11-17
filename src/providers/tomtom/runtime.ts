@@ -1,5 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { optionalBoolean, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
 import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
@@ -9,7 +9,7 @@ const tomtomValidationPath = "/search/2/geocode/Amsterdam.json";
 
 type TomtomActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const tomtomActionHandlers: Record<string, TomtomActionHandler> = {
+export const tomtomActionHandlers: ProviderActionHandlers<"tomtom", TomtomActionHandler> = {
   fuzzy_search(input, context) {
     assertLatLonPair(input);
     return requestTomtomJson(context, {
@@ -105,7 +105,6 @@ export async function validateTomtomCredential(
       accountId: "tomtom-api-key",
       displayName: "TomTom API Key",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: tomtomApiBaseUrl,
       validationEndpoint: tomtomValidationPath,
@@ -114,7 +113,7 @@ export async function validateTomtomCredential(
 }
 
 async function requestTomtomJson(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   input: {
     path: string;
     query?: Record<string, string | number | boolean | undefined>;

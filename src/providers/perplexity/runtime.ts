@@ -1,16 +1,16 @@
 import type { CredentialValidationResult, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { PerplexityActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
-const perplexityApiBaseUrl = "https://api.perplexity.ai";
+export const perplexityApiBaseUrl = "https://api.perplexity.ai";
 
 type PerplexityMode = "validate" | "execute";
 type PerplexityActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const perplexityActionHandlers: Record<PerplexityActionName, PerplexityActionHandler> = {
+export const perplexityActionHandlers: ProviderActionHandlers<"perplexity", PerplexityActionHandler> = {
   list_models(_input, context) {
     return perplexityRequest("/v1/models", "GET", {}, context, "execute");
   },
@@ -53,7 +53,6 @@ export async function validatePerplexityCredential(
     profile: {
       accountId: "perplexity-api-key",
       displayName: "Perplexity API Key",
-      grantedScopes: [],
     },
     metadata: {
       validationEndpoint: "/v1/models",
@@ -66,7 +65,7 @@ async function perplexityRequest(
   path: string,
   method: "GET" | "POST",
   input: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher">,
+  context: ApiKeyProviderContext,
   mode: PerplexityMode,
 ): Promise<unknown> {
   let response: Response;

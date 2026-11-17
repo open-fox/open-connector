@@ -1,14 +1,15 @@
 import type { CredentialValidationResult, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { optionalRecord, optionalString, requiredRecord, requiredString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
-const pingdomApiBaseUrl = "https://api.pingdom.com/api/3.1";
+export const pingdomApiBaseUrl: string = "https://api.pingdom.com/api/3.1";
 
 type PingdomActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const pingdomActionHandlers: Record<string, PingdomActionHandler> = {
+export const pingdomActionHandlers: ProviderActionHandlers<"pingdom", PingdomActionHandler> = {
   async list_checks(input, context) {
     const body = requiredRecord(await requestPingdomJson(context, "/checks", input), "Pingdom checks response");
     return {
@@ -55,7 +56,6 @@ export async function validatePingdomCredential(
     profile: {
       accountId: "pingdom-api-token",
       displayName: "Pingdom API token",
-      grantedScopes: [],
     },
     metadata: {
       apiBaseUrl: pingdomApiBaseUrl,
@@ -66,7 +66,7 @@ export async function validatePingdomCredential(
 }
 
 async function requestPingdomJson(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   path: string,
   query: Record<string, unknown> = {},
   phase: "validate" | "execute" = "execute",

@@ -1,13 +1,11 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import {
-  defineProviderExecutors,
-  ProviderRequestError,
-  providerUserAgent,
-  requireApiKeyCredential,
-} from "../provider-runtime.ts";
+import { requireApiKeyCredential } from "../provider-credentials.ts";
+import { defineProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerInputError, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "appveyor";
 const appveyorApiBaseUrl = "https://ci.appveyor.com";
@@ -21,7 +19,7 @@ interface AppveyorActionContext extends ApiKeyProviderContext {
 
 type AppveyorActionHandler = (input: Record<string, unknown>, context: AppveyorActionContext) => Promise<unknown>;
 
-export const appveyorActionHandlers: Record<string, AppveyorActionHandler> = {
+export const appveyorActionHandlers: ProviderActionHandlers<"appveyor", AppveyorActionHandler> = {
   async get_projects(input, context) {
     const projects = await appveyorGetJson({
       context,
@@ -99,7 +97,7 @@ export const appveyorActionHandlers: Record<string, AppveyorActionHandler> = {
     const artifacts = await appveyorGetJson({
       context,
       accountName: resolveAccountName(input, context),
-      path: `/buildjobs/${encodeURIComponent(requiredString(input.jobId, "jobId", invalidInputError))}/artifacts`,
+      path: `/buildjobs/${encodeURIComponent(requiredString(input.jobId, "jobId", providerInputError))}/artifacts`,
       phase: "execute",
     });
 
@@ -125,6 +123,22 @@ export const executors: ProviderExecutors = defineProviderExecutors<AppveyorActi
   },
 });
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  async baseUrl(context): Promise<string> {
+    const credential = await requireApiKeyCredential(context, service);
+    const accountName = readOptionalNonEmptyString(credential.metadata.accountName);
+    return accountName
+      ? `${appveyorApiBaseUrl}/api/account/${encodeURIComponent(accountName)}`
+      : `${appveyorApiBaseUrl}/api`;
+  },
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const accountName = readOptionalNonEmptyString(input.values.accountName);
@@ -147,7 +161,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: resolvedAccountName,
         displayName: resolvedAccountName ? `AppVeyor ${resolvedAccountName}` : "AppVeyor API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: appveyorApiBaseUrl,
         validationEndpoint: buildAppveyorApiPath(appveyorValidationPath, accountName),
@@ -159,7 +172,7 @@ export const credentialValidators: CredentialValidators = {
 };
 
 async function appveyorGetJson(input: {
-  context: Pick<AppveyorActionContext, "apiKey" | "fetcher" | "signal">;
+  context: AppveyorActionContext;
   accountName?: string;
   path: string;
   phase: AppveyorRequestPhase;
@@ -305,8 +318,4 @@ function readOptionalNonEmptyString(value: unknown): string | undefined {
 
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
-}
-
-function invalidInputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(400, message);
 }

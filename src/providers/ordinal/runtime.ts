@@ -1,6 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { OrdinalActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { createHash } from "node:crypto";
 import { compactObject, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
@@ -13,14 +12,12 @@ import {
 
 export const ordinalApiBaseUrl = "https://app.tryordinal.com/api/v1";
 
-const ordinalRequestTimeoutMs = 30_000;
 const ordinalValidationPath = "/workspace";
 
 type OrdinalRequestPhase = "validate" | "execute";
-type OrdinalActionContext = ApiKeyProviderContext;
-type OrdinalActionHandler = (input: Record<string, unknown>, context: OrdinalActionContext) => Promise<unknown>;
+type OrdinalActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const ordinalActionHandlers: Record<OrdinalActionName, OrdinalActionHandler> = {
+export const ordinalActionHandlers: ProviderActionHandlers<"ordinal", OrdinalActionHandler> = {
   async get_workspace(_input, context) {
     const workspace = await requestOrdinalJson({
       context,
@@ -114,7 +111,7 @@ export async function validateOrdinalCredential(
   fetcher: typeof fetch,
   signal?: AbortSignal,
 ): Promise<CredentialValidationResult> {
-  const context: OrdinalActionContext = {
+  const context: ApiKeyProviderContext = {
     apiKey: requiredString(apiKey, "apiKey", (message) => new ProviderRequestError(401, message)),
     fetcher,
     signal,
@@ -134,9 +131,7 @@ export async function validateOrdinalCredential(
     profile: {
       accountId: workspaceId ?? buildOrdinalProviderAccountId(apiKey),
       displayName: workspaceName ?? workspaceSlug ?? "Ordinal API Key",
-      grantedScopes: [],
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: ordinalApiBaseUrl,
       validationEndpoint: ordinalValidationPath,
@@ -148,7 +143,7 @@ export async function validateOrdinalCredential(
 }
 
 async function requestOrdinalJson(input: {
-  context: Pick<OrdinalActionContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   query?: Record<string, unknown>;
   phase: OrdinalRequestPhase;
@@ -160,12 +155,12 @@ async function requestOrdinalJson(input: {
 }
 
 async function requestOrdinalResponse(input: {
-  context: Pick<OrdinalActionContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   query?: Record<string, unknown>;
 }): Promise<Response> {
   const apiKey = requiredString(input.context.apiKey, "apiKey", (message) => new ProviderRequestError(401, message));
-  const timeout = createProviderTimeout(input.context.signal, ordinalRequestTimeoutMs);
+  const timeout = createProviderTimeout(input.context.signal);
   try {
     return await input.context.fetcher(buildOrdinalUrl(input.path, input.query), {
       method: "GET",

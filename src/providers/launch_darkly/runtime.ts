@@ -1,5 +1,5 @@
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { LaunchDarklyActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
+import type { ProviderRequestContext } from "../provider-runtime.ts";
 
 import {
   compactObject,
@@ -30,7 +30,7 @@ interface LaunchDarklyRequestInput {
   expectEmpty?: boolean;
 }
 
-export const launchDarklyActionHandlers: Record<LaunchDarklyActionName, LaunchDarklyActionHandler> = {
+export const launchDarklyActionHandlers: ProviderActionHandlers<"launch_darkly", LaunchDarklyActionHandler> = {
   get_caller_identity(_input, context) {
     return fetchCallerIdentity(context.apiKey, context.fetcher, "execute", context.signal);
   },
@@ -682,7 +682,7 @@ function contextPage(input: Record<string, unknown>): Record<string, string | nu
 async function launchDarklyRequest<T = unknown>(
   apiKey: string,
   input: LaunchDarklyRequestInput,
-  context: Pick<ApiKeyProviderContext, "fetcher" | "signal">,
+  context: ProviderRequestContext,
   phase: LaunchDarklyRequestPhase = "execute",
 ): Promise<T> {
   const url = new URL(`${launchDarklyApiBaseUrl}${input.path}`);

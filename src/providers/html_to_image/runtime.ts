@@ -1,5 +1,5 @@
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { HtmlToImageActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalBoolean, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
 import { createProviderTimeout, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
@@ -20,7 +20,7 @@ type HtmlToImageRequestPhase = "validate" | "execute";
 type HtmlToImageActionContext = ApiKeyProviderContext;
 type HtmlToImageActionHandler = (input: Record<string, unknown>, context: HtmlToImageActionContext) => Promise<unknown>;
 
-export const htmlToImageActionHandlers: Record<HtmlToImageActionName, HtmlToImageActionHandler> = {
+export const htmlToImageActionHandlers: ProviderActionHandlers<"html_to_image", HtmlToImageActionHandler> = {
   convert_html_to_image(input, context) {
     return executeHtmlToImageRender(htmlToImageHtmlPath, buildConvertHtmlRequestBody(input), context);
   },
@@ -34,7 +34,6 @@ export async function validateHtmlToImageCredential(
   options: { fetcher: typeof fetch; signal?: AbortSignal },
 ): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   const payload = await postHtmlToImageJson({
@@ -52,7 +51,6 @@ export async function validateHtmlToImageCredential(
       accountId: "api_key",
       displayName: "HTML to Image API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: htmlToImageApiBaseUrl,
       validationEndpoint: htmlToImageHtmlPath,

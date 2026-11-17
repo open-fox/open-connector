@@ -8,6 +8,7 @@ export const feishuDomainMediaProviderPermissions = {
   documentRead: "docx:document:readonly",
   documentWrite: "docx:document:write_only",
   wikiRead: "wiki:node:read",
+  slidesScreenshot: "slides:presentation:screenshot",
   taskAttachmentWrite: "task:attachment:write",
   okrImageUpload: "okr:okr.progress.file:upload",
   minutesMediaExport: "minutes:minutes.media:export",
@@ -69,6 +70,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
   return [
     defineProviderAction(service, {
       name: "upload_docs_media",
+      operationType: "write",
       description:
         "Upload an image or attachment from a public URL to a Feishu document block, using multipart upload above 20 MB.",
       requiredScopes: [feishuDomainMediaProviderPermissions.mediaUpload],
@@ -99,6 +101,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "insert_docs_media",
+      operationType: "write",
       description:
         "Append an image or file to a Feishu docx document by creating a block, uploading media, and binding the file token with rollback on failure.",
       requiredScopes: [
@@ -143,6 +146,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "preview_docs_media",
+      operationType: "read",
       description: "Download the source-file preview of Feishu document media into local transit storage.",
       requiredScopes: [feishuDomainMediaProviderPermissions.mediaDownload],
       providerPermissions: [feishuDomainMediaProviderPermissions.mediaDownload],
@@ -151,6 +155,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "download_docs_media",
+      operationType: "read",
       description: "Download Feishu document media or a whiteboard image into local transit storage.",
       requiredScopes: [feishuDomainMediaProviderPermissions.mediaDownload],
       providerPermissions: [feishuDomainMediaProviderPermissions.mediaDownload],
@@ -169,6 +174,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "download_document_cover",
+      operationType: "read",
       description: "Read a Feishu docx document cover and download its image into local transit storage.",
       requiredScopes: [
         feishuDomainMediaProviderPermissions.documentRead,
@@ -202,6 +208,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "update_document_cover",
+      operationType: "write",
       description: "Upload an image from a public URL and set it as a Feishu docx document cover.",
       requiredScopes: [
         feishuDomainMediaProviderPermissions.documentRead,
@@ -241,6 +248,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "delete_document_cover",
+      operationType: "destructive",
       description: "Idempotently clear the cover of a Feishu docx document.",
       requiredScopes: [
         feishuDomainMediaProviderPermissions.documentRead,
@@ -274,6 +282,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "upload_slides_media",
+      operationType: "write",
       description: "Upload an image of at most 20 MB to a Slides presentation for use as an XML `<img>` file token.",
       requiredScopes: [feishuDomainMediaProviderPermissions.mediaUpload, feishuDomainMediaProviderPermissions.wikiRead],
       providerPermissions: [
@@ -306,6 +315,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "set_sheet_cell_image",
+      operationType: "write",
       description: "Fetch an image from a public URL, upload it to a Feishu spreadsheet, and embed it into one cell.",
       requiredScopes: [
         feishuDomainMediaProviderPermissions.driveFileUpload,
@@ -352,13 +362,14 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "get_slides_screenshots",
+      operationType: "read",
       description: "Render up to ten existing Slides pages and store the decoded screenshots in local transit storage.",
-      requiredScopes: [feishuDomainMediaProviderPermissions.wikiRead],
-      providerPermissions: [feishuDomainMediaProviderPermissions.wikiRead],
+      requiredScopes: [feishuDomainMediaProviderPermissions.slidesScreenshot],
+      providerPermissions: [feishuDomainMediaProviderPermissions.slidesScreenshot],
       inputSchema: s.object(
         "Identify the presentation and select up to ten slides.",
         {
-          ...presentationReference,
+          presentationToken: token,
           slideIds: s.array("Stable slide IDs to render.", token, {
             minItems: 1,
             maxItems: 10,
@@ -369,7 +380,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
           }),
         },
         {
-          optional: ["presentationType", "slideIds", "slideNumbers"],
+          optional: ["slideIds", "slideNumbers"],
         },
       ),
       outputSchema: s.object(
@@ -385,6 +396,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "render_slide_screenshot",
+      operationType: "read",
       description: "Render one SML 2.0 slide XML fragment and store the decoded screenshot in local transit storage.",
       requiredScopes: [],
       providerPermissions: [],
@@ -412,6 +424,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "upload_task_attachment",
+      operationType: "write",
       description: "Upload a file from a public URL as an attachment to a Feishu Task resource.",
       requiredScopes: [feishuDomainMediaProviderPermissions.taskAttachmentWrite],
       providerPermissions: [feishuDomainMediaProviderPermissions.taskAttachmentWrite],
@@ -442,6 +455,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "upload_okr_image",
+      operationType: "write",
       description: "Upload an image from a public URL for use in Feishu OKR progress rich text.",
       requiredScopes: [feishuDomainMediaProviderPermissions.okrImageUpload],
       providerPermissions: [feishuDomainMediaProviderPermissions.okrImageUpload],
@@ -474,6 +488,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "download_minutes_media",
+      operationType: "read",
       description: "Resolve and stream a Feishu Minutes audio or video recording into local transit storage.",
       requiredScopes: [feishuDomainMediaProviderPermissions.minutesMediaExport],
       providerPermissions: [feishuDomainMediaProviderPermissions.minutesMediaExport],
@@ -500,6 +515,7 @@ export function createFeishuDomainMediaActions(service: string): readonly Action
     }),
     defineProviderAction(service, {
       name: "upload_minutes_media",
+      operationType: "write",
       description:
         "Upload audio or video from a public URL to Drive and create a Feishu Minutes recording from the resulting file token.",
       requiredScopes: [

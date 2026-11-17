@@ -1,24 +1,30 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { WoodpeckerCoActionName } from "./actions.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
-import { compactObject, optionalBoolean, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
+import {
+  compactObject,
+  looseArray,
+  optionalBoolean,
+  optionalRecord,
+  optionalString,
+  rawStringOrNull,
+  requiredString,
+} from "../../core/cast.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
 import {
   createProviderTimeout,
-  defineApiKeyProviderExecutors,
   ProviderRequestError,
   providerUserAgent,
+  defaultProviderRequestTimeoutMs,
 } from "../provider-runtime.ts";
 
 const service = "woodpecker_co";
 
 export const woodpeckerCoApiBaseUrl = "https://api.woodpecker.co/rest";
 
-const woodpeckerCoDefaultRequestTimeoutMs = 30_000;
-
 type WoodpeckerCoPhase = "validate" | "execute";
-type WoodpeckerCoContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
-type WoodpeckerCoActionHandler = (input: Record<string, unknown>, context: WoodpeckerCoContext) => Promise<unknown>;
+type WoodpeckerCoActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
 interface NormalizedWoodpeckerUser {
   id: number | null;
@@ -28,7 +34,7 @@ interface NormalizedWoodpeckerUser {
   raw: Record<string, unknown>;
 }
 
-export const woodpeckerCoActionHandlers: Record<WoodpeckerCoActionName, WoodpeckerCoActionHandler> = {
+export const woodpeckerCoActionHandlers: ProviderActionHandlers<"woodpecker_co", WoodpeckerCoActionHandler> = {
   async list_users(input, context) {
     const payload = await requestWoodpeckerCoJson({
       method: "GET",
@@ -128,7 +134,7 @@ export const woodpeckerCoActionHandlers: Record<WoodpeckerCoActionName, Woodpeck
       context,
       phase: "execute",
     });
-    const mailboxes = readArray(payload);
+    const mailboxes = looseArray(payload);
 
     return {
       mailboxes: normalizeMailboxList(mailboxes),
@@ -151,6 +157,17 @@ export const woodpeckerCoActionHandlers: Record<WoodpeckerCoActionName, Woodpeck
 };
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, woodpeckerCoActionHandlers);
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: woodpeckerCoApiBaseUrl,
+  auth: { type: "api_key_header", name: "x-api-key" },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    if (!headers.has("accept")) headers.set("accept", "application/json");
+    if (!headers.has("content-type")) headers.set("content-type", "application/json");
+  },
+});
 
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
@@ -176,7 +193,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: firstUser?.id == null ? "woodpecker-api-key" : `woodpecker:${firstUser.id}`,
         displayName: firstUser?.email ?? "Woodpecker.co API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: woodpeckerCoApiBaseUrl,
         validationEndpoint: "/v2/users",
@@ -192,7 +208,7 @@ async function requestWoodpeckerCoJson(input: {
   method: "GET";
   path: string;
   params?: Record<string, string | undefined>;
-  context: WoodpeckerCoContext;
+  context: ApiKeyProviderContext;
   phase: WoodpeckerCoPhase;
 }): Promise<unknown> {
   const url = new URL(normalizeWoodpeckerCoPath(input.path), `${woodpeckerCoApiBaseUrl}/`);
@@ -202,7 +218,7 @@ async function requestWoodpeckerCoJson(input: {
     }
   }
 
-  const timeout = createProviderTimeout(input.context.signal, woodpeckerCoDefaultRequestTimeoutMs);
+  const timeout = createProviderTimeout(input.context.signal);
 
   let response: Response;
   try {
@@ -219,7 +235,7 @@ async function requestWoodpeckerCoJson(input: {
     throw new ProviderRequestError(
       timeout.didTimeout() ? 504 : 502,
       timeout.didTimeout()
-        ? `Woodpecker.co request timed out after ${woodpeckerCoDefaultRequestTimeoutMs}ms`
+        ? `Woodpecker.co request timed out after ${defaultProviderRequestTimeoutMs}ms`
         : `Woodpecker.co request failed: ${error instanceof Error ? error.message : "Unknown transport error"}`,
       error,
     );
@@ -311,7 +327,7 @@ function normalizeUsersPayload(payload: unknown): {
   const object = requireRecordPayload(payload);
 
   return {
-    users: normalizeUserList(readArray(object.content)),
+    users: normalizeUserList(looseArray(object.content)),
     pagination: normalizePagination(object.pagination_data),
     raw: object,
   };
@@ -322,9 +338,9 @@ function normalizeUserList(value: unknown[]): NormalizedWoodpeckerUser[] {
     const object = optionalRecord(item) ?? {};
     return {
       id: readNullableInteger(object.id),
-      name: readNullableString(object.name),
-      email: readNullableString(object.email),
-      role: readNullableString(object.role),
+      name: rawStringOrNull(object.name),
+      email: rawStringOrNull(object.email),
+      role: rawStringOrNull(object.role),
       raw: object,
     };
   });
@@ -337,8 +353,8 @@ function normalizeCampaignList(value: unknown[]): Array<Record<string, unknown>>
 function normalizeCampaign(object: Record<string, unknown>): Record<string, unknown> {
   return {
     id: readNullableInteger(object.id),
-    name: readNullableString(object.name),
-    status: readNullableString(object.status),
+    name: rawStringOrNull(object.name),
+    status: rawStringOrNull(object.status),
     raw: object,
   };
 }
@@ -348,10 +364,10 @@ function normalizeProspectList(value: unknown[]): Array<Record<string, unknown>>
     const object = optionalRecord(item) ?? {};
     return {
       id: readNullableInteger(object.id),
-      email: readNullableString(object.email),
-      status: readNullableString(object.status),
-      first_name: readNullableString(object.first_name),
-      last_name: readNullableString(object.last_name),
+      email: rawStringOrNull(object.email),
+      status: rawStringOrNull(object.status),
+      first_name: rawStringOrNull(object.first_name),
+      last_name: rawStringOrNull(object.last_name),
       raw: object,
     };
   });
@@ -366,10 +382,10 @@ function normalizeMailbox(object: Record<string, unknown>): Record<string, unkno
 
   return {
     id: readNullableInteger(object.id),
-    type: readNullableString(object.type),
-    email: readNullableString(details.email),
-    provider: readNullableString(details.provider),
-    login: readNullableString(details.login),
+    type: rawStringOrNull(object.type),
+    email: rawStringOrNull(details.email),
+    provider: rawStringOrNull(details.provider),
+    login: rawStringOrNull(details.login),
     details,
     raw: object,
   };
@@ -392,10 +408,6 @@ function requireRecordPayload(payload: unknown): Record<string, unknown> {
     throw new ProviderRequestError(502, "Woodpecker.co returned an invalid JSON object", payload);
   }
   return object;
-}
-
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
 }
 
 function readV1ListPayload(payload: unknown): {
@@ -436,10 +448,6 @@ function normalizeWoodpeckerCoPath(path: string): string {
 function readOptionalString(value: unknown): string | undefined {
   const stringValue = optionalString(value);
   return stringValue ? stringValue : undefined;
-}
-
-function readNullableString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
 }
 
 function readNullableInteger(value: unknown): number | null {

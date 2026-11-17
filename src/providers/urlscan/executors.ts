@@ -1,13 +1,10 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import {
-  defineApiKeyProviderExecutors,
-  ProviderRequestError,
-  providerUserAgent,
-  setSearchParams,
-} from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent, setSearchParams } from "../provider-runtime.ts";
 
 const service = "urlscan";
 const urlscanApiBaseUrl = "https://urlscan.io";
@@ -15,7 +12,7 @@ const urlscanApiBaseUrl = "https://urlscan.io";
 type UrlscanPhase = "validate" | "execute";
 type UrlscanActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const urlscanActionHandlers: Record<string, UrlscanActionHandler> = {
+export const urlscanActionHandlers: ProviderActionHandlers<"urlscan", UrlscanActionHandler> = {
   async submit_scan(input, context) {
     const payload = await requestUrlscanJson({
       context,
@@ -72,7 +69,6 @@ export const credentialValidators: CredentialValidators = {
     });
     return {
       profile: { displayName: "urlscan.io API Key" },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl: urlscanApiBaseUrl,
         validationEndpoint: "/user/quotas/",
@@ -82,7 +78,7 @@ export const credentialValidators: CredentialValidators = {
 };
 
 async function requestUrlscanJson(input: {
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   method: "GET" | "POST";
   phase: UrlscanPhase;
@@ -216,3 +212,9 @@ function readObjectArray(value: unknown, fieldName: string): Array<Record<string
     return record;
   });
 }
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: "https://urlscan.io",
+  auth: { type: "api_key_header", name: "api-key" },
+});

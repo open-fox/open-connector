@@ -1,4 +1,5 @@
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext } from "../provider-executors.ts";
 import type { NewRelicActionName } from "./actions.ts";
 
 import {
@@ -15,7 +16,7 @@ import {
 import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const newRelicGraphqlUrl = "https://api.newrelic.com/graphql";
-const newRelicRestBaseUrl = "https://api.newrelic.com";
+export const newRelicRestBaseUrl: string = "https://api.newrelic.com";
 const newRelicUserAgent = providerUserAgent;
 
 type NewRelicRequestPhase = "validate" | "execute";
@@ -47,7 +48,7 @@ type NewRelicCurrentUserPayload = {
   };
 };
 
-export const newRelicActionHandlers: Record<NewRelicActionName, NewRelicActionHandler> = {
+export const newRelicActionHandlers: ProviderActionHandlers<"new_relic", NewRelicActionHandler> = {
   get_current_user(input, context) {
     return newRelicGetCurrentUser(toRuntimeInput("get_current_user", input, context), context.fetcher);
   },
@@ -154,7 +155,6 @@ export async function validateNewRelicCredential(
     accountId: string;
     displayName: string;
   };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   const currentUser = await fetchNewRelicCurrentUser(apiKey, fetcher, "validate");
@@ -167,7 +167,6 @@ export async function validateNewRelicCredential(
       accountId: providerAccountId,
       displayName: accountLabel,
     },
-    grantedScopes: [],
     metadata: {
       validationEndpoint: "/graphql",
       user: compactObject({

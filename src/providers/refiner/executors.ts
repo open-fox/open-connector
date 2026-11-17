@@ -1,13 +1,10 @@
 import type { CredentialValidationResult, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalBoolean, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
-import {
-  defineApiKeyProviderExecutors,
-  defineProviderProxy,
-  providerUserAgent,
-  ProviderRequestError,
-} from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
 const service = "refiner";
 const refinerApiBaseUrl = "https://api.refiner.io/v1";
@@ -17,7 +14,7 @@ type RefinerQueryValue = string | number | boolean | string[] | undefined | null
 type RefinerActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
 interface RefinerRequestOptions {
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   method?: "GET" | "POST" | "DELETE";
   query?: Record<string, RefinerQueryValue>;
@@ -25,7 +22,7 @@ interface RefinerRequestOptions {
   mode: "validate" | "execute";
 }
 
-export const refinerActionHandlers: Record<string, RefinerActionHandler> = {
+export const refinerActionHandlers: ProviderActionHandlers<"refiner", RefinerActionHandler> = {
   get_account_info(_input, context) {
     return refinerGetAccountInfo(context);
   },
@@ -91,9 +88,7 @@ export const credentialValidators = {
       profile: {
         accountId,
         displayName: accountId ?? projectName ?? organizationName ?? "Refiner API Key",
-        grantedScopes: [],
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: refinerApiBaseUrl,
         validationEndpoint: refinerValidationPath,

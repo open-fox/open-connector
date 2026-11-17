@@ -1,14 +1,10 @@
 import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { FoursquareActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalBoolean, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
-import {
-  defineApiKeyProviderExecutors,
-  defineProviderProxy,
-  providerUserAgent,
-  ProviderRequestError,
-} from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
 const service = "foursquare";
 const foursquareApiBaseUrl = "https://api.foursquare.com";
@@ -17,7 +13,7 @@ const requiredPlaceFields = ["fsq_id", "name"];
 
 type FoursquareActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const foursquareActionHandlers: Record<FoursquareActionName, FoursquareActionHandler> = {
+export const foursquareActionHandlers: ProviderActionHandlers<"foursquare", FoursquareActionHandler> = {
   async search_places(input, context) {
     validateSearchPlacesInput(input);
     const payload = await requestFoursquareJson({
@@ -153,7 +149,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: "foursquare-api-key",
         displayName: "Foursquare API Key",
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl: foursquareApiBaseUrl,
         validationEndpoint: foursquareValidationPath,
@@ -166,7 +161,7 @@ export const credentialValidators: CredentialValidators = {
 async function requestFoursquareJson(input: {
   path: string;
   query: Record<string, string | number | boolean | undefined>;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   phase: "validate" | "execute";
 }): Promise<unknown> {
   let response: Response;

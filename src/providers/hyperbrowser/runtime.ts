@@ -1,5 +1,5 @@
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { HyperbrowserActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
 import { createProviderTimeout, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
@@ -23,7 +23,7 @@ interface HyperbrowserRequestInput {
   phase: HyperbrowserRequestPhase;
 }
 
-export const hyperbrowserActionHandlers: Record<HyperbrowserActionName, HyperbrowserActionHandler> = {
+export const hyperbrowserActionHandlers: ProviderActionHandlers<"hyperbrowser", HyperbrowserActionHandler> = {
   fetch_page: postAction("/api/web/fetch", buildDirectBody),
   search_web: postAction("/api/web/search", buildDirectBody),
   start_web_crawl: postAction("/api/web/crawl", buildDirectBody),
@@ -43,7 +43,6 @@ export async function validateHyperbrowserCredential(
   options: { fetcher: typeof fetch; signal?: AbortSignal },
 ): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   await requestHyperbrowserJson({
@@ -66,7 +65,6 @@ export async function validateHyperbrowserCredential(
       accountId: "hyperbrowser:api-key",
       displayName: "Hyperbrowser API Key",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: hyperbrowserApiBaseUrl,
       validationEndpoint: "/api/web/fetch",

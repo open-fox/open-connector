@@ -1,5 +1,5 @@
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { HookdeckActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalBoolean, optionalRecord, optionalString } from "../../core/cast.ts";
 import { createProviderTimeout, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
@@ -9,12 +9,10 @@ export const hookdeckApiVersion = "2025-07-01";
 export const hookdeckApiPrefix: string = `/${hookdeckApiVersion}`;
 export const hookdeckValidationPath = "/sources";
 
-const hookdeckRequestTimeoutMs = 30_000;
-
 type HookdeckActionContext = ApiKeyProviderContext;
 type HookdeckActionHandler = (input: Record<string, unknown>, context: HookdeckActionContext) => Promise<unknown>;
 
-export const hookdeckActionHandlers: Record<HookdeckActionName, HookdeckActionHandler> = {
+export const hookdeckActionHandlers: ProviderActionHandlers<"hookdeck", HookdeckActionHandler> = {
   async list_connections(input, context) {
     return normalizeListOutput(
       "connections",
@@ -132,7 +130,6 @@ export async function validateHookdeckCredential(
   options: { fetcher: typeof fetch; signal?: AbortSignal },
 ): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   const payload = await hookdeckGetJson(
@@ -154,7 +151,6 @@ export async function validateHookdeckCredential(
       accountId: optionalString(firstSource?.id) ?? "api_key",
       displayName: firstSource ? `Hookdeck: ${String(firstSource.name)}` : "Hookdeck API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: `${hookdeckApiBaseUrl}${hookdeckApiPrefix}`,
       apiVersion: hookdeckApiVersion,
@@ -180,7 +176,7 @@ async function hookdeckRequestJson(
   body?: Record<string, unknown>,
   query?: Record<string, unknown>,
 ): Promise<unknown> {
-  const timeout = createProviderTimeout(context.signal, hookdeckRequestTimeoutMs);
+  const timeout = createProviderTimeout(context.signal);
   let response: Response;
   try {
     response = await context.fetcher(buildHookdeckUrl(path, query), {

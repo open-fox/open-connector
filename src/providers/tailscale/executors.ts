@@ -1,15 +1,12 @@
 import type { CredentialValidators, ExecutionContext, ProviderExecutors } from "../../core/types.ts";
-import type { ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 import type { TailscaleOperationDefinition } from "./operations.ts";
 
 import { optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import {
-  defineProviderExecutors,
-  ProviderRequestError,
-  readProviderJsonBody,
-  readProviderTextBody,
-  requireCustomCredential,
-} from "../provider-runtime.ts";
+import { requireCustomCredential } from "../provider-credentials.ts";
+import { defineProviderExecutors, mapProviderActionHandlers } from "../provider-executors.ts";
+import { ProviderRequestError, readProviderJsonBody, readProviderTextBody } from "../provider-runtime.ts";
 import { tailscaleOperations } from "./operations.ts";
 
 const service = "tailscale";
@@ -21,8 +18,6 @@ interface TailscaleContext {
   clientId: string;
   clientSecret: string;
   tailnet: string;
-  /** Scopes recorded when the connection was created, used to narrow per-operation token requests. */
-  grantedScopes: ReadonlySet<string>;
   fetcher: ProviderFetch;
   signal?: AbortSignal;
 }
@@ -33,10 +28,7 @@ interface TailscaleAccessToken {
   grantedScopes: string[];
 }
 
-const tailscaleActionHandlers: Record<string, ProviderRuntimeHandler<TailscaleContext>> = {};
-for (const operation of tailscaleOperations) {
-  tailscaleActionHandlers[operation.name] = createOperationHandler(operation);
-}
+const tailscaleActionHandlers = mapProviderActionHandlers(service, tailscaleOperations, createOperationHandler);
 
 export const executors: ProviderExecutors = defineProviderExecutors<TailscaleContext>({
   service,
@@ -44,7 +36,7 @@ export const executors: ProviderExecutors = defineProviderExecutors<TailscaleCon
   skipDnsValidation: true,
   async createContext(context: ExecutionContext, fetcher: ProviderFetch): Promise<TailscaleContext> {
     const credential = await requireCustomCredential(context, service);
-    return readTailscaleContext(credential.values, fetcher, context.signal, credential.profile.grantedScopes);
+    return readTailscaleContext(credential.values, fetcher, context.signal);
   },
 });
 
@@ -105,7 +97,7 @@ function createOperationHandler(operation: TailscaleOperationDefinition): Provid
       url,
       context,
       createOperationRequestInit(operation, input),
-      resolveOperationScopes(operation, input, context),
+      resolveOperationScopes(operation, input),
       operation.responseFormat ?? "json",
       operation.responseEnvelope,
     );
@@ -122,12 +114,11 @@ function createOperationHandler(operation: TailscaleOperationDefinition): Provid
 function resolveOperationScopes(
   operation: TailscaleOperationDefinition,
   input: Record<string, unknown>,
-  context: TailscaleContext,
 ): readonly string[] {
   if (!operation.resolveScopes) {
     return operation.requiredScopes;
   }
-  return operation.resolveScopes(input, context.grantedScopes);
+  return operation.resolveScopes(input);
 }
 
 function createOperationRequestInit(
@@ -197,7 +188,6 @@ function readTailscaleContext(
   values: Record<string, string>,
   fetcher: ProviderFetch,
   signal: AbortSignal | undefined,
-  grantedScopes: readonly string[] = [],
 ): TailscaleContext {
   const tailnet = optionalString(values.tailnet) ?? defaultTailnet;
   return {
@@ -208,7 +198,6 @@ function readTailscaleContext(
       (message) => new ProviderRequestError(400, message),
     ),
     tailnet,
-    grantedScopes: new Set(grantedScopes),
     fetcher,
     signal,
   };

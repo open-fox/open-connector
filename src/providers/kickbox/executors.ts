@@ -1,15 +1,12 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { KickboxActionName } from "./actions.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
+import type { ProviderRequestContext } from "../provider-runtime.ts";
 
 import { createHash } from "node:crypto";
 import { optionalBoolean, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
-import {
-  defineApiKeyProviderExecutors,
-  isAbortLikeError,
-  providerUserAgent,
-  ProviderRequestError,
-} from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { isAbortLikeError, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "kickbox";
 const kickboxApiBaseUrl = "https://api.kickbox.com";
@@ -19,7 +16,7 @@ const kickboxValidationEmail = "hello@example.com";
 type KickboxRequestPhase = "validate" | "execute";
 type KickboxActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const kickboxActionHandlers: Record<KickboxActionName, KickboxActionHandler> = {
+export const kickboxActionHandlers: ProviderActionHandlers<"kickbox", KickboxActionHandler> = {
   verify_email(input, context) {
     return requestKickboxVerify({
       apiKey: context.apiKey,
@@ -59,7 +56,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: buildKickboxProviderAccountId(input.apiKey),
         displayName: email,
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl: kickboxApiBaseUrl,
         validationEndpoint: "/v2/verify",
@@ -77,7 +73,7 @@ export const credentialValidators: CredentialValidators = {
 async function requestKickboxVerify(input: {
   apiKey: string;
   email: string;
-  context: Pick<ApiKeyProviderContext, "fetcher" | "signal">;
+  context: ProviderRequestContext;
   phase: KickboxRequestPhase;
 }): Promise<unknown> {
   return requestKickboxJson({
@@ -94,7 +90,7 @@ async function requestKickboxVerify(input: {
 
 async function requestKickboxDisposable(input: {
   domainOrEmail: string;
-  context: Pick<ApiKeyProviderContext, "fetcher" | "signal">;
+  context: ProviderRequestContext;
   phase: KickboxRequestPhase;
 }): Promise<unknown> {
   return requestKickboxJson({
@@ -108,7 +104,7 @@ async function requestKickboxDisposable(input: {
 async function requestKickboxJson(input: {
   baseUrl: string;
   path: string;
-  context: Pick<ApiKeyProviderContext, "fetcher" | "signal">;
+  context: ProviderRequestContext;
   phase: KickboxRequestPhase;
   apiKey?: string;
   query?: Record<string, string | undefined>;
@@ -225,3 +221,9 @@ function requireKickboxObject(payload: unknown, endpoint: string): Record<string
   }
   return record;
 }
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: "https://api.kickbox.com",
+  auth: { type: "api_key_query", name: "apikey" },
+});

@@ -1,12 +1,16 @@
-import type { CredentialValidators, ExecutionContext, ProviderExecutors } from "../../core/types.ts";
+import type {
+  CredentialValidators,
+  ExecutionContext,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 
 import { nullableString, optionalRecord, optionalString } from "../../core/cast.ts";
-import {
-  defineProviderExecutors,
-  providerUserAgent,
-  ProviderRequestError,
-  requireApiKeyCredential,
-} from "../provider-runtime.ts";
+import { requireApiKeyCredential } from "../provider-credentials.ts";
+import { defineProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
 const service = "abstract";
 const abstractEmailValidationBaseUrl = "https://emailvalidation.abstractapi.com";
@@ -25,10 +29,9 @@ interface AbstractCheckResult {
   text: "TRUE" | "FALSE" | "UNKNOWN";
 }
 
-type AbstractActionName = "validate_email";
 type AbstractActionHandler = (input: Record<string, unknown>, context: AbstractActionContext) => Promise<unknown>;
 
-export const abstractActionHandlers: Record<AbstractActionName, AbstractActionHandler> = {
+export const abstractActionHandlers: ProviderActionHandlers<"abstract", AbstractActionHandler> = {
   async validate_email(input, context): Promise<unknown> {
     const email = optionalString(input.email);
     if (!email) {
@@ -61,6 +64,16 @@ export const executors: ProviderExecutors = defineProviderExecutors<AbstractActi
   },
 });
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: new URL(abstractEmailValidationPath, abstractEmailValidationBaseUrl).toString(),
+  auth: { type: "api_key_query", name: "api_key" },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     await fetchAbstractEmailValidation(
@@ -81,7 +94,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: "api_key",
         displayName: "Abstract Email Validation API Key",
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl: abstractEmailValidationBaseUrl,
         validationEndpoint: abstractEmailValidationPath,

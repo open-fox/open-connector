@@ -1,6 +1,6 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch } from "../provider-runtime.ts";
-import type { VatlayerActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import { compactObject, optionalBoolean, optionalRecord, optionalString } from "../../core/cast.ts";
 import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
@@ -10,7 +10,7 @@ export const vatlayerApiBaseUrl = "https://apilayer.net/api";
 type VatlayerQueryValue = boolean | number | string | undefined;
 type VatlayerActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const vatlayerActionHandlers: Record<VatlayerActionName, VatlayerActionHandler> = {
+export const vatlayerActionHandlers: ProviderActionHandlers<"vatlayer", VatlayerActionHandler> = {
   validate_vat_number(input, context) {
     return vatlayerRequest(
       {
@@ -32,7 +32,7 @@ export const vatlayerActionHandlers: Record<VatlayerActionName, VatlayerActionHa
         path: "/price",
         query: {
           amount: readRequiredNumber(input.amount, "amount"),
-          type: readOptionalTrimmedString(input.type),
+          type: optionalString(input.type),
           incl: readOptionalFlag(input.incl),
           ...buildCountrySelectorQuery(input),
         },
@@ -54,7 +54,6 @@ export async function validateVatlayerCredential(
     profile: {
       accountId: "vatlayer-api-key",
       displayName: "VATlayer API Access Key",
-      grantedScopes: [],
     },
     metadata: {
       validationEndpoint: "/types",
@@ -65,7 +64,7 @@ export async function validateVatlayerCredential(
 
 async function vatlayerRequest(
   input: { path: string; query?: Record<string, VatlayerQueryValue> },
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const response = await vatlayerRawRequest(input, context);
   const payload = await readVatlayerPayload(response);
@@ -88,7 +87,7 @@ async function vatlayerRequest(
 
 async function vatlayerRawRequest(
   input: { path: string; query?: Record<string, VatlayerQueryValue> },
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
 ): Promise<Response> {
   const url = new URL(resolveVatlayerPath(input.path), `${vatlayerApiBaseUrl}/`);
   url.searchParams.set("access_key", context.apiKey);
@@ -143,8 +142,8 @@ function mapVatlayerError(error: { code?: number; type?: string; info: string })
 }
 
 function buildCountrySelectorQuery(input: Record<string, unknown>): Record<string, VatlayerQueryValue> {
-  const countryCode = readOptionalTrimmedString(input.countryCode);
-  const ipAddress = readOptionalTrimmedString(input.ipAddress);
+  const countryCode = optionalString(input.countryCode);
+  const ipAddress = optionalString(input.ipAddress);
   const useClientIp = optionalBoolean(input.useClientIp);
   const selected = [countryCode, ipAddress, useClientIp === true ? "useClientIp" : undefined].filter(
     (value) => value !== undefined,
@@ -160,13 +159,9 @@ function buildCountrySelectorQuery(input: Record<string, unknown>): Record<strin
 }
 
 function readRequiredTrimmedString(value: unknown, fieldName: string): string {
-  const result = readOptionalTrimmedString(value);
+  const result = optionalString(value);
   if (!result) throw new ProviderRequestError(400, `${fieldName} is required`);
   return result;
-}
-
-function readOptionalTrimmedString(value: unknown): string | undefined {
-  return optionalString(value);
 }
 
 function readRequiredNumber(value: unknown, fieldName: string): number {

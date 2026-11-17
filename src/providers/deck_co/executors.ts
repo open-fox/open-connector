@@ -1,7 +1,10 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
 const service = "deck_co";
 const deckCoApiBaseUrl = "https://api.deck.co/v2";
@@ -16,7 +19,7 @@ interface DeckCoContext {
 
 type DeckCoActionHandler = (input: Record<string, unknown>, context: DeckCoContext) => Promise<unknown>;
 
-const deckCoActionHandlers: Record<string, DeckCoActionHandler> = {
+const deckCoActionHandlers: ProviderActionHandlers<"deck_co", DeckCoActionHandler> = {
   test_api_key(_input, context) {
     return deckCoGetJson("/test", {}, context, "execute");
   },
@@ -69,6 +72,16 @@ const deckCoActionHandlers: Record<string, DeckCoActionHandler> = {
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, deckCoActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: deckCoApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const payload = await deckCoGetJson("/test", {}, { apiKey: input.apiKey, fetcher, signal }, "validate");
@@ -79,7 +92,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: "api_key",
         displayName: "Deck.co API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: deckCoApiBaseUrl,
         validationEndpoint: "/test",

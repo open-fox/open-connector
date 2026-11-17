@@ -1,6 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { BigDataCloudActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
 import { isAbortLikeError, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
@@ -16,7 +15,7 @@ const validationLocalityLanguage = "en";
 type BigDataCloudRequestPhase = "validate" | "execute";
 type BigDataCloudActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
-export const bigDataCloudActionHandlers: Record<BigDataCloudActionName, BigDataCloudActionHandler> = {
+export const bigDataCloudActionHandlers: ProviderActionHandlers<"big_data_cloud", BigDataCloudActionHandler> = {
   get_country_by_ip(input, context) {
     return requestBigDataCloudJson({
       path: countryByIpPath,
@@ -89,7 +88,6 @@ export async function validateBigDataCloudCredential(
       accountId: "big_data_cloud-api-key",
       displayName: "BigDataCloud API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: bigDataCloudApiBaseUrl,
       validationEndpoint: countryByIpPath,
@@ -102,7 +100,7 @@ export async function validateBigDataCloudCredential(
 
 async function requestBigDataCloudJson(input: {
   path: string;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   query: Record<string, unknown>;
   phase: BigDataCloudRequestPhase;
 }): Promise<Record<string, unknown>> {
@@ -121,7 +119,7 @@ async function requestBigDataCloudJson(input: {
     });
     payload = await readBigDataCloudPayload(response);
   } catch (error) {
-    if (isAbortLikeError(error) || isTimeoutLikeError(error)) {
+    if (isAbortLikeError(error)) {
       throw new ProviderRequestError(504, error instanceof Error ? error.message : "BigDataCloud request timed out");
     }
 
@@ -204,8 +202,4 @@ function mapBigDataCloudError(
   }
 
   return new ProviderRequestError(status || 500, normalizedMessage, payload);
-}
-
-function isTimeoutLikeError(error: unknown): boolean {
-  return error instanceof Error && error.name === "TimeoutError";
 }

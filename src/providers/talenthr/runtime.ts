@@ -1,5 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { optionalRecord, optionalString } from "../../core/cast.ts";
 import { queryParams } from "../../core/request.ts";
@@ -10,7 +10,7 @@ const validationEndpoint = "/directory";
 
 type TalenthrActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const talenthrActionHandlers: Record<string, TalenthrActionHandler> = {
+export const talenthrActionHandlers: ProviderActionHandlers<"talenthr", TalenthrActionHandler> = {
   async change_employee_role(input, context): Promise<unknown> {
     const employeeId = readPositiveInteger(input.employeeId, "employeeId");
     const role = readEmployeeRole(input.role);
@@ -48,7 +48,6 @@ export async function validateTalenthrCredential(
       accountId: "talenthr-api-key",
       displayName: "TalentHR API Key",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: talenthrApiBaseUrl,
       validationEndpoint,
@@ -57,7 +56,7 @@ export async function validateTalenthrCredential(
 }
 
 interface TalenthrRequestInput {
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   phase: "validate" | "execute";
   method?: "GET" | "PUT";

@@ -1,8 +1,9 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { GistActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 import type { GistActionContext, GistActionHandler } from "./runtime-shared.ts";
 
 import { optionalRecord, optionalString } from "../../core/cast.ts";
+import { readOAuthScopes } from "../../oauth/oauth-scopes.ts";
 import { ProviderRequestError } from "../provider-runtime.ts";
 import {
   compactObject,
@@ -13,7 +14,7 @@ import {
   optionalInteger,
 } from "./runtime-shared.ts";
 
-export const gistActionHandlers: Record<GistActionName, GistActionHandler> = {
+export const gistActionHandlers: ProviderActionHandlers<"gist", GistActionHandler> = {
   list_my_gists(input, context) {
     return listGists("/gists", input, context);
   },
@@ -109,7 +110,7 @@ export async function validateGistCredential(
       accountId,
       displayName: name ?? login ?? accountId,
     },
-    grantedScopes: ["gist"],
+    grantedScopes: readOAuthScopes(oauthScopesHeader),
     metadata: compactObject({
       id: accountId,
       login,

@@ -1,5 +1,4 @@
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { FirstbaseActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { optionalBoolean, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
 import { encodePathSegment } from "../../core/request.ts";
@@ -11,7 +10,10 @@ const firstbaseValidationPath = "/api/v1/inventory?page=1&size=1";
 type FirstbaseRequestMode = "validate" | "execute";
 type FirstbaseQueryValue = string | string[];
 
-export const firstbaseActionHandlers: Record<FirstbaseActionName, ProviderRuntimeHandler<ApiKeyProviderContext>> = {
+export const firstbaseActionHandlers: ProviderActionHandlers<
+  "firstbase",
+  ProviderRuntimeHandler<ApiKeyProviderContext>
+> = {
   async list_inventory(input, context) {
     validateListInventoryInput(input);
     return {
@@ -49,7 +51,6 @@ export async function validateFirstbaseCredential(
   signal?: AbortSignal,
 ): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   await firstbaseRequestJson("GET", firstbaseValidationPath, { apiKey, fetcher, signal }, "validate");
@@ -59,7 +60,6 @@ export async function validateFirstbaseCredential(
       accountId: "firstbase:api-key",
       displayName: "Firstbase API Key",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: firstbaseApiBaseUrl,
       validationEndpoint: firstbaseValidationPath,
@@ -91,7 +91,7 @@ async function firstbaseGetJson(
 async function firstbaseRequestJson(
   method: "GET",
   path: string,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   mode: FirstbaseRequestMode,
 ): Promise<unknown> {
   let response: Response;

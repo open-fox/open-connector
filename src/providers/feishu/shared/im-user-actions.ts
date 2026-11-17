@@ -6,6 +6,13 @@ const userIdType = s.stringEnum("The user identifier type returned by Feishu.", 
 const pageSize = s.positiveInteger("The maximum number of results on this page.", {
   maximum: 100,
 });
+// GET /im/v1/messages caps page_size at 50 — a larger value fails the whole
+// request with Feishu 99992402 (field validation failed), so the schema must
+// not admit it. `list_thread_messages` (the same endpoint through the thread
+// container) already declares 50.
+const messagePageSize = s.positiveInteger("The maximum number of results on this page.", {
+  maximum: 50,
+});
 const pageToken = s.string("The page token returned by the previous request.", {
   minLength: 1,
 });
@@ -25,6 +32,7 @@ export function createFeishuImUserActions(service: string): readonly ActionDefin
   return [
     defineProviderAction(service, {
       name: "list_chats",
+      operationType: "read",
       description: "List Feishu chats visible to the authorized user.",
       requiredScopes: ["im:chat:read"],
       providerPermissions: ["im:chat:read"],
@@ -44,6 +52,7 @@ export function createFeishuImUserActions(service: string): readonly ActionDefin
     }),
     defineProviderAction(service, {
       name: "search_chats",
+      operationType: "read",
       description: "Search Feishu chats visible to the authorized user by name.",
       requiredScopes: ["im:chat:read"],
       providerPermissions: ["im:chat:read"],
@@ -63,6 +72,7 @@ export function createFeishuImUserActions(service: string): readonly ActionDefin
     }),
     defineProviderAction(service, {
       name: "get_chat",
+      operationType: "read",
       description: "Get the metadata of one Feishu chat visible to the authorized user.",
       requiredScopes: ["im:chat:read"],
       providerPermissions: ["im:chat:read"],
@@ -88,6 +98,7 @@ export function createFeishuImUserActions(service: string): readonly ActionDefin
     }),
     defineProviderAction(service, {
       name: "list_chat_members",
+      operationType: "read",
       description: "List members of one Feishu chat visible to the authorized user.",
       requiredScopes: ["im:chat.members:read"],
       providerPermissions: ["im:chat.members:read"],
@@ -111,13 +122,16 @@ export function createFeishuImUserActions(service: string): readonly ActionDefin
     }),
     defineProviderAction(service, {
       name: "list_messages",
+      operationType: "read",
       description: "List messages from one Feishu chat or thread with user-identity history permissions.",
       requiredScopes: [
+        "im:message:readonly",
         "im:message.group_msg:get_as_user",
         "im:message.p2p_msg:get_as_user",
         "im:message.reactions:read",
       ],
       providerPermissions: [
+        "im:message:readonly",
         "im:message.group_msg:get_as_user",
         "im:message.p2p_msg:get_as_user",
         "im:message.reactions:read",
@@ -130,7 +144,7 @@ export function createFeishuImUserActions(service: string): readonly ActionDefin
           startTime: s.string("The inclusive Unix timestamp in seconds.", { minLength: 1 }),
           endTime: s.string("The exclusive Unix timestamp in seconds.", { minLength: 1 }),
           sortType: s.stringEnum("The message sort order.", ["ByCreateTimeAsc", "ByCreateTimeDesc"]),
-          pageSize,
+          pageSize: messagePageSize,
           pageToken,
         },
         {
@@ -141,6 +155,7 @@ export function createFeishuImUserActions(service: string): readonly ActionDefin
     }),
     defineProviderAction(service, {
       name: "reply_message",
+      operationType: "write",
       description: "Reply to a Feishu message as the authorized user, optionally inside the message thread.",
       requiredScopes: ["im:message.send_as_user", "im:message"],
       providerPermissions: ["im:message.send_as_user", "im:message"],

@@ -1,16 +1,17 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { NewsApiActionName } from "./actions.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
 const service = "news_api";
 const newsApiBaseUrl = "https://newsapi.org";
 
 type NewsApiActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const newsApiActionHandlers: Record<NewsApiActionName, NewsApiActionHandler> = {
+export const newsApiActionHandlers: ProviderActionHandlers<"news_api", NewsApiActionHandler> = {
   get_everything(input, context) {
     return executeNewsApiGet("/v2/everything", input, context, {
       q: optionalString(input.q),
@@ -62,6 +63,16 @@ export const newsApiActionHandlers: Record<NewsApiActionName, NewsApiActionHandl
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, newsApiActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: newsApiBaseUrl,
+  auth: { type: "api_key_header", name: "x-api-key" },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const payload = optionalRecord(
@@ -83,7 +94,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: "news_api",
         displayName: "News API Key",
       },
-      grantedScopes: [],
       metadata: {
         validationEndpoint: "/v2/top-headlines/sources",
         apiBaseUrl: newsApiBaseUrl,
@@ -96,7 +106,7 @@ export const credentialValidators: CredentialValidators = {
 async function executeNewsApiGet(
   path: string,
   _input: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   query: Record<string, string | number | undefined>,
   phase: "validate" | "execute" = "execute",
 ): Promise<unknown> {

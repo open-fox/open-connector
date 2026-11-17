@@ -1,6 +1,7 @@
 import type { ProviderDefinition } from "../../core/types.ts";
 
-import { supabaseActions, supabaseProviderScopes } from "./actions.ts";
+import { supabaseActions } from "./actions.ts";
+import { supabaseProviderScopes } from "./scopes.ts";
 
 const service = "supabase";
 
@@ -18,6 +19,7 @@ export const provider: ProviderDefinition = {
       authorizationUrl: "https://api.supabase.com/v1/oauth/authorize",
       tokenUrl: "https://api.supabase.com/v1/oauth/token",
       scopes: [...supabaseProviderScopes],
+      authorizationRequestFields: { scope: false },
       tokenEndpointAuthMethod: "client_secret_basic",
     },
     {

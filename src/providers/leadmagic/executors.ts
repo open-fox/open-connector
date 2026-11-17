@@ -1,6 +1,10 @@
-import type { CredentialValidationResult, CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { LeadmagicActionName } from "./actions.ts";
+import type {
+  CredentialValidationResult,
+  CredentialValidators,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import {
   compactObject,
@@ -12,17 +16,12 @@ import {
   optionalString,
   optionalStringOrNull,
 } from "../../core/cast.ts";
-import {
-  createProviderTimeout,
-  defineApiKeyProviderExecutors,
-  isAbortLikeError,
-  providerUserAgent,
-  ProviderRequestError,
-} from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent, runProviderRequest } from "../provider-runtime.ts";
 
 const service = "leadmagic";
 const leadmagicApiBaseUrl = "https://api.leadmagic.io/v1";
-const leadmagicDefaultRequestTimeoutMs = 30_000;
 
 type LeadmagicMode = "validate" | "execute";
 type LeadmagicActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
@@ -34,7 +33,7 @@ interface LeadmagicRequestInput {
   mode: LeadmagicMode;
 }
 
-export const leadmagicActionHandlers: Record<LeadmagicActionName, LeadmagicActionHandler> = {
+export const leadmagicActionHandlers: ProviderActionHandlers<"leadmagic", LeadmagicActionHandler> = {
   async get_credits(_input, context) {
     return normalizeCredits(
       await requestLeadmagicJson(
@@ -146,9 +145,7 @@ export const credentialValidators: CredentialValidators = {
   },
 };
 
-async function validateLeadmagicCredential(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
-): Promise<CredentialValidationResult> {
+async function validateLeadmagicCredential(context: ApiKeyProviderContext): Promise<CredentialValidationResult> {
   const account = normalizeCredits(
     await requestLeadmagicJson(
       {
@@ -162,10 +159,9 @@ async function validateLeadmagicCredential(
 
   return {
     profile: {
-      accountId: "leadmagic",
+      accountId: service,
       displayName: `LeadMagic (${formatCredits(account.credits)} credits)`,
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: leadmagicApiBaseUrl,
       validationEndpoint: "/credits",
@@ -176,16 +172,14 @@ async function validateLeadmagicCredential(
 
 async function requestLeadmagicJson(
   input: LeadmagicRequestInput,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
-  const timeout = createProviderTimeout(context.signal, leadmagicDefaultRequestTimeoutMs);
-
-  try {
+  return runProviderRequest({ signal: context.signal, label: "LeadMagic" }, async (signal) => {
     const response = await context.fetcher(buildLeadmagicUrl(input.path), {
       method: input.method,
       headers: buildLeadmagicHeaders(context.apiKey, Boolean(input.body)),
       body: input.body ? JSON.stringify(input.body) : undefined,
-      signal: timeout.signal,
+      signal,
     });
     const payload = await readLeadmagicPayload(response);
 
@@ -199,22 +193,7 @@ async function requestLeadmagicJson(
     }
 
     return record;
-  } catch (error) {
-    if (error instanceof ProviderRequestError) {
-      throw error;
-    }
-
-    if (timeout.didTimeout() || isAbortLikeError(error)) {
-      throw new ProviderRequestError(504, "LeadMagic request timed out");
-    }
-
-    throw new ProviderRequestError(
-      502,
-      error instanceof Error ? `LeadMagic request failed: ${error.message}` : "LeadMagic request failed",
-    );
-  } finally {
-    timeout.cleanup();
-  }
+  });
 }
 
 function buildLeadmagicUrl(path: string): string {
@@ -455,3 +434,9 @@ function hasText(value: unknown): boolean {
 function formatCredits(credits: number): string {
   return Number.isInteger(credits) ? String(credits) : String(Number(credits.toFixed(2)));
 }
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: "https://api.leadmagic.io/v1",
+  auth: { type: "api_key_header", name: "x-api-key" },
+});

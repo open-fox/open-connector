@@ -1,6 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { HighergovActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { optionalRecord, optionalString } from "../../core/cast.ts";
 import {
@@ -15,9 +14,10 @@ export const highergovApiBaseUrl = "https://www.highergov.com/api-external/";
 
 type HighergovRequestPhase = "validate" | "execute";
 
-const highergovDefaultRequestTimeoutMs = 30_000;
-
-export const highergovActionHandlers: Record<HighergovActionName, ProviderRuntimeHandler<ApiKeyProviderContext>> = {
+export const highergovActionHandlers: ProviderActionHandlers<
+  "highergov",
+  ProviderRuntimeHandler<ApiKeyProviderContext>
+> = {
   list_opportunities(input, context) {
     return requestHighergovList("opportunity/", input, context, "execute");
   },
@@ -41,9 +41,7 @@ export async function validateHighergovCredential(
   return {
     profile: {
       displayName: "HigherGov API Key",
-      grantedScopes: [],
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: highergovApiBaseUrl,
       validationEndpoint: "/api-external/agency/",
@@ -54,7 +52,7 @@ export async function validateHighergovCredential(
 async function requestHighergovList(
   path: string,
   input: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: HighergovRequestPhase,
 ): Promise<unknown> {
   const url = new URL(path, highergovApiBaseUrl);
@@ -68,7 +66,7 @@ async function requestHighergovList(
   let response: Response;
   let payload: unknown;
   context.signal?.throwIfAborted();
-  const timeout = createProviderTimeout(context.signal, highergovDefaultRequestTimeoutMs);
+  const timeout = createProviderTimeout(context.signal);
   try {
     response = await context.fetcher(url, {
       method: "GET",

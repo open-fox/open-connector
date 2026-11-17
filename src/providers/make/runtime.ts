@@ -1,6 +1,6 @@
 import type { CredentialValidationResult, ResolvedCredential } from "../../core/types.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 import type { ProviderFetch } from "../provider-runtime.ts";
-import type { MakeActionName } from "./actions.ts";
 
 import { compactObject, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
 import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
@@ -29,7 +29,7 @@ interface MakeRequestOptions extends MakeActionContext {
 
 type MakeActionHandler = (input: Record<string, unknown>, context: MakeActionContext) => Promise<unknown>;
 
-export const makeActionHandlers: Record<MakeActionName, MakeActionHandler> = {
+export const makeActionHandlers: ProviderActionHandlers<"make", MakeActionHandler> = {
   async get_current_user(input, context) {
     const raw = await requestMakeJson<Record<string, unknown>>({
       ...context,
@@ -183,7 +183,6 @@ export async function validateMakeCredential(
       accountId: userId === undefined ? "api_key" : `make:${zoneUrl}:${userId}`,
       displayName: email ?? name ?? "Make API Token",
     },
-    grantedScopes: [],
     metadata: compactObject({
       zoneUrl,
       apiBaseUrl: buildMakeApiBaseUrl(zoneUrl),
@@ -377,6 +376,10 @@ function normalizeMakeZoneUrl(value: unknown): string {
 
 function buildMakeApiBaseUrl(zoneUrl: string): string {
   return `${zoneUrl}${makeApiVersionPath}`;
+}
+
+export function makeProxyBaseUrl(metadata: Record<string, unknown>): string {
+  return buildMakeApiBaseUrl(normalizeMakeZoneUrl(metadata.zoneUrl));
 }
 
 function isOfficialMakeHostname(hostname: string): boolean {

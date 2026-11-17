@@ -1,9 +1,20 @@
-import type { CredentialValidationResult, CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { ZenserpActionName } from "./actions.ts";
+import type {
+  CredentialValidationResult,
+  CredentialValidators,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString, requiredRecord, requiredString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import {
+  providerInputError,
+  ProviderRequestError,
+  providerResponseError,
+  providerUserAgent,
+} from "../provider-runtime.ts";
 
 const service = "zenserp";
 const zenserpBaseUrl = "https://app.zenserp.com";
@@ -14,7 +25,7 @@ type ZenserpPhase = "validate" | "execute";
 type ZenserpQueryValue = string | number | boolean | undefined;
 type ZenserpActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
-export const zenserpActionHandlers: Record<ZenserpActionName, ZenserpActionHandler> = {
+export const zenserpActionHandlers: ProviderActionHandlers<"zenserp", ZenserpActionHandler> = {
   search(input, context) {
     return requestZenserpSearch(buildZenserpSearchQuery(input, undefined), context, "execute");
   },
@@ -51,7 +62,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: "zenserp-api-key",
         displayName: "Zenserp API Key",
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl: zenserpApiBaseUrl,
         validationEndpoint: "/search",
@@ -64,7 +74,7 @@ export const credentialValidators: CredentialValidators = {
 
 async function requestZenserpSearch(
   query: Record<string, ZenserpQueryValue>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: ZenserpPhase,
 ): Promise<Record<string, unknown>> {
   let response: Response;
@@ -95,7 +105,7 @@ async function requestZenserpSearch(
     throw createZenserpError(response.status, payload, phase);
   }
 
-  return requiredRecord(payload, "Zenserp response", providerOutputError);
+  return requiredRecord(payload, "Zenserp response", providerResponseError);
 }
 
 function buildZenserpSearchQuery(
@@ -210,10 +220,8 @@ function readOptionalInteger(
   return value;
 }
 
-function providerInputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(400, message);
-}
-
-function providerOutputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(502, message);
-}
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: "https://app.zenserp.com",
+  auth: { type: "api_key_header", name: "apikey" },
+});

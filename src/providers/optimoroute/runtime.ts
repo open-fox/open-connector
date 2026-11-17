@@ -1,6 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { OptimorouteActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
 import {
@@ -13,13 +12,10 @@ import {
 export const optimorouteApiBaseUrl = "https://api.optimoroute.com/v1";
 export const optimorouteValidationPath = "/get_orders";
 
-const optimorouteDefaultRequestTimeoutMs = 30_000;
-
 type OptimoroutePhase = "validate" | "execute";
-type OptimorouteActionContext = ApiKeyProviderContext;
-type OptimorouteActionHandler = (input: Record<string, unknown>, context: OptimorouteActionContext) => Promise<unknown>;
+type OptimorouteActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const optimorouteActionHandlers: Record<OptimorouteActionName, OptimorouteActionHandler> = {
+export const optimorouteActionHandlers: ProviderActionHandlers<"optimoroute", OptimorouteActionHandler> = {
   create_or_update_orders(input, context) {
     return createOrUpdateOrders(input, context);
   },
@@ -52,9 +48,7 @@ export async function validateOptimorouteCredential(
   return {
     profile: {
       displayName: "OptimoRoute API Key",
-      grantedScopes: [],
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: optimorouteApiBaseUrl,
       validationEndpoint: optimorouteValidationPath,
@@ -64,7 +58,7 @@ export async function validateOptimorouteCredential(
 
 async function createOrUpdateOrders(
   input: Record<string, unknown>,
-  context: OptimorouteActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const payload = await optimorouteRequest(
     "/create_or_update_orders",
@@ -84,7 +78,7 @@ async function createOrUpdateOrders(
 
 async function getOrders(
   input: Record<string, unknown>,
-  context: OptimorouteActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const orders = readOrderReferences(input.orders, "orders");
   const payload = await optimorouteRequest(
@@ -105,7 +99,7 @@ async function getOrders(
 
 async function deleteOrders(
   input: Record<string, unknown>,
-  context: OptimorouteActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const record = await optimorouteRequest(
     "/delete_orders",
@@ -127,13 +121,13 @@ async function deleteOrders(
 async function optimorouteRequest(
   path: string,
   body: Record<string, unknown>,
-  context: Pick<OptimorouteActionContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: OptimoroutePhase,
 ): Promise<unknown> {
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
   const url = new URL(normalizedPath, `${optimorouteApiBaseUrl}/`);
   url.searchParams.set("key", context.apiKey);
-  const timeout = createProviderTimeout(context.signal, optimorouteDefaultRequestTimeoutMs);
+  const timeout = createProviderTimeout(context.signal);
 
   try {
     const response = await context.fetcher(url.toString(), {

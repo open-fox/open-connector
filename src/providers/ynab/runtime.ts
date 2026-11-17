@@ -1,12 +1,12 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { YnabActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
 import { encodePathSegment } from "../../core/request.ts";
 import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
-const ynabApiBaseUrl = "https://api.ynab.com/v1";
+export const ynabApiBaseUrl = "https://api.ynab.com/v1";
 
 interface YnabRequestSpec {
   path: string;
@@ -15,7 +15,7 @@ interface YnabRequestSpec {
 
 type YnabActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
-export const ynabActionHandlers: Record<YnabActionName, YnabActionHandler> = {
+export const ynabActionHandlers: ProviderActionHandlers<"ynab", YnabActionHandler> = {
   get_user(_input, context) {
     return ynabRequestJson({ path: "/user" }, context, "execute");
   },
@@ -139,7 +139,6 @@ export async function validateYnabCredential(
     profile: {
       accountId: userId ?? "ynab-api-key",
       displayName: userId ? `YNAB User ${userId}` : "YNAB User",
-      grantedScopes: ["read-only"],
     },
     metadata: compactObject({
       apiBaseUrl: ynabApiBaseUrl,
@@ -151,7 +150,7 @@ export async function validateYnabCredential(
 
 async function ynabRequestJson(
   spec: YnabRequestSpec,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: "validate" | "execute",
 ): Promise<unknown> {
   const url = new URL(`${ynabApiBaseUrl}${spec.path}`);

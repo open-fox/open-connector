@@ -1,5 +1,6 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import {
   compactObject,
@@ -14,10 +15,9 @@ const betterStackApiBaseUrl = "https://uptime.betterstack.com";
 const betterStackValidationPath = "/api/v3/incidents";
 
 type BetterStackRequestPhase = "validate" | "execute";
-type BetterStackContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
 type BetterStackActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
-export const betterStackActionHandlers: Record<string, BetterStackActionHandler> = {
+export const betterStackActionHandlers: ProviderActionHandlers<"better_stack", BetterStackActionHandler> = {
   list_incidents(input, context) {
     return listIncidents(input, context);
   },
@@ -69,7 +69,6 @@ export async function validateBetterStackCredential(
       accountId: sampleTeamName ?? "better_stack",
       displayName: sampleTeamName ? `Better Stack (${sampleTeamName})` : "Better Stack API Token",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: betterStackApiBaseUrl,
       validationEndpoint: "/api/v3/incidents?per_page=1",
@@ -81,7 +80,7 @@ export async function validateBetterStackCredential(
 
 async function listIncidents(
   input: Record<string, unknown>,
-  context: BetterStackContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const payload = await requestBetterStackJson({
     context,
@@ -109,7 +108,7 @@ async function listIncidents(
 
 async function getIncident(
   input: Record<string, unknown>,
-  context: BetterStackContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const incidentId = requireInputString(input.incident_id, "incident_id");
   const payload = await requestBetterStackJson({
@@ -128,7 +127,7 @@ async function getIncident(
 
 async function createIncident(
   input: Record<string, unknown>,
-  context: BetterStackContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const payload = await requestBetterStackJson({
     context,
@@ -159,7 +158,7 @@ async function createIncident(
 
 async function acknowledgeIncident(
   input: Record<string, unknown>,
-  context: BetterStackContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const incidentId = requireInputString(input.incident_id, "incident_id");
   const payload = await requestBetterStackJson({
@@ -181,7 +180,7 @@ async function acknowledgeIncident(
 
 async function escalateIncident(
   input: Record<string, unknown>,
-  context: BetterStackContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const incidentId = requireInputString(input.incident_id, "incident_id");
   const payload = await requestBetterStackJson({
@@ -215,7 +214,7 @@ async function escalateIncident(
 
 async function listIncidentComments(
   input: Record<string, unknown>,
-  context: BetterStackContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const incidentId = requireInputString(input.incident_id, "incident_id");
   const payload = await requestBetterStackJson({
@@ -233,7 +232,7 @@ async function listIncidentComments(
 
 async function listMetadata(
   input: Record<string, unknown>,
-  context: BetterStackContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const payload = await requestBetterStackJson({
     context,
@@ -256,7 +255,7 @@ async function listMetadata(
 }
 
 async function requestBetterStackJson(input: {
-  context: BetterStackContext;
+  context: ApiKeyProviderContext;
   path: string;
   phase: BetterStackRequestPhase;
   method?: "GET" | "POST";
@@ -288,7 +287,7 @@ async function requestBetterStackJson(input: {
 }
 
 async function betterStackFetch(input: {
-  context: BetterStackContext;
+  context: ApiKeyProviderContext;
   path: string;
   method?: "GET" | "POST";
   query?: Record<string, string | number | boolean | undefined>;

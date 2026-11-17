@@ -1,4 +1,6 @@
-import type { ApiKeyProviderContext, ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
 import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
@@ -7,7 +9,7 @@ const twitterapiIoApiBaseUrl = "https://api.twitterapi.io";
 
 type TwitterApiIoActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
-export const twitterapiIoActionHandlers: Record<string, TwitterApiIoActionHandler> = {
+export const twitterapiIoActionHandlers: ProviderActionHandlers<"twitterapi_io", TwitterApiIoActionHandler> = {
   get_account_info(_input, context) {
     return requestTwitterApiIo({
       path: "/oapi/my/info",
@@ -446,7 +448,6 @@ export async function validateTwitterApiIoCredential(
   profile: {
     accountId: string;
     displayName: string;
-    grantedScopes: string[];
   };
   metadata: Record<string, unknown>;
 }> {
@@ -462,7 +463,6 @@ export async function validateTwitterApiIoCredential(
     profile: {
       accountId: "twitterapi_io",
       displayName: "TwitterAPI.io API Key",
-      grantedScopes: [],
     },
     metadata: compactObject({
       apiBaseUrl: twitterapiIoApiBaseUrl,

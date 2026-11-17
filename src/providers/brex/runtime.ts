@@ -1,16 +1,20 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
-import { compactObject, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import { createProviderTimeout, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
+import {
+  createProviderTimeout,
+  providerUserAgent,
+  ProviderRequestError,
+  requiredInputString,
+} from "../provider-runtime.ts";
 
 export const brexApiBaseUrl = "https://api.brex.com";
 const brexValidationPath = "/v2/users/me";
-const brexDefaultRequestTimeoutMs = 30_000;
 
 type BrexRequestPhase = "validate" | "execute";
-type BrexActionContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
-type BrexActionHandler = (input: Record<string, unknown>, context: BrexActionContext) => Promise<unknown>;
+type BrexActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
 interface BrexRequestInput {
   path: string;
@@ -22,7 +26,7 @@ interface BrexRequestInput {
   query?: URLSearchParams;
 }
 
-export const brexActionHandlers: Record<string, BrexActionHandler> = {
+export const brexActionHandlers: ProviderActionHandlers<"brex", BrexActionHandler> = {
   async get_current_user(_input, context) {
     const user = await requestBrexJson({
       path: "/v2/users/me",
@@ -152,7 +156,7 @@ export const brexActionHandlers: Record<string, BrexActionHandler> = {
   },
   async get_expense(input, context) {
     const expense = await requestBrexJson({
-      path: `/v1/expenses/${encodeURIComponent(readRequiredString(input.id, "id"))}`,
+      path: `/v1/expenses/${encodeURIComponent(requiredInputString(input.id, "id"))}`,
       method: "GET",
       apiKey: context.apiKey,
       fetcher: context.fetcher,
@@ -190,7 +194,7 @@ export const brexActionHandlers: Record<string, BrexActionHandler> = {
   },
   async get_budget(input, context) {
     const budget = await requestBrexJson({
-      path: `/v2/budgets/${encodeURIComponent(readRequiredString(input.id, "id"))}`,
+      path: `/v2/budgets/${encodeURIComponent(requiredInputString(input.id, "id"))}`,
       method: "GET",
       apiKey: context.apiKey,
       fetcher: context.fetcher,
@@ -235,7 +239,6 @@ export async function validateBrexCredential(
       accountId: userId ?? "brex:user_token",
       displayName: email ?? userName ?? "Brex User Token",
     },
-    grantedScopes: [],
     metadata: compactObject({
       userId,
       userEmail: email,
@@ -246,7 +249,7 @@ export async function validateBrexCredential(
 }
 
 async function requestBrexJson(input: BrexRequestInput): Promise<unknown> {
-  const timeout = createProviderTimeout(input.signal, brexDefaultRequestTimeoutMs);
+  const timeout = createProviderTimeout(input.signal);
   try {
     const url = new URL(input.path.startsWith("/") ? input.path.slice(1) : input.path, `${brexApiBaseUrl}/`);
     if (input.query) {
@@ -470,10 +473,6 @@ function normalizeBrexBudget(value: unknown): Record<string, unknown> {
     limitType: nullableStringField(record, "limit_type"),
     raw: record,
   });
-}
-
-function readRequiredString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, (message) => new ProviderRequestError(400, message));
 }
 
 function pickString(record: Record<string, unknown> | undefined, fieldName: string): string | undefined {

@@ -1,4 +1,4 @@
-import type { DockerHubActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 
 import { compactObject, nullableString, optionalInteger, optionalString } from "../../core/cast.ts";
 import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
@@ -27,7 +27,7 @@ export type DockerHubActionHandler = (
   context: DockerHubActionContext,
 ) => Promise<unknown>;
 
-export const dockerHubActionHandlers: Record<DockerHubActionName, DockerHubActionHandler> = {
+export const dockerHubActionHandlers: ProviderActionHandlers<"docker_hub", DockerHubActionHandler> = {
   list_repositories: listDockerHubRepositories,
   get_repository: getDockerHubRepository,
   create_repository: createDockerHubRepository,
@@ -50,7 +50,6 @@ export async function validateDockerHubApiKey(
   signal?: AbortSignal,
 ): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   const { credential } = await exchangeDockerHubAccessToken(apiKey, fetcher, "validate", signal);
@@ -59,7 +58,6 @@ export async function validateDockerHubApiKey(
       accountId: credential.identifier,
       displayName: credential.identifier,
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: dockerHubApiBaseUrl,
       credentialFormat: "identifier:secret",

@@ -1,9 +1,10 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { GriptapeActionName } from "./actions.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "griptape";
 const griptapeApiBaseUrl = "https://cloud.griptape.ai/api";
@@ -11,7 +12,7 @@ const griptapeApiBaseUrl = "https://cloud.griptape.ai/api";
 type GriptapeRequestPhase = "validate" | "execute";
 type GriptapeActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const griptapeActionHandlers: Record<GriptapeActionName, GriptapeActionHandler> = {
+export const griptapeActionHandlers: ProviderActionHandlers<"griptape", GriptapeActionHandler> = {
   async list_organizations(_input, context) {
     const record = asRecord(await requestGriptape({ path: "/organizations", method: "GET", context }));
     return {
@@ -184,6 +185,16 @@ export const griptapeActionHandlers: Record<GriptapeActionName, GriptapeActionHa
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, griptapeActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: griptapeApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    if (!headers.has("accept")) headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const payload = await requestGriptape({
@@ -205,7 +216,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: organizationId ? `griptape:organization:${organizationId}` : "griptape-cloud-api-key",
         displayName: organizationName ?? "Griptape Cloud API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: griptapeApiBaseUrl,
         organizationId,
@@ -218,7 +228,7 @@ export const credentialValidators: CredentialValidators = {
 async function requestGriptape(input: {
   path: string;
   method: "GET" | "POST" | "PATCH" | "DELETE";
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   query?: Array<[string, unknown]>;
   body?: unknown;
   phase?: GriptapeRequestPhase;

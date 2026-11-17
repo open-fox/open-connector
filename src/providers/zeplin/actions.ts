@@ -2,7 +2,6 @@ import type { ActionDefinition, JsonSchema } from "../../core/types.ts";
 
 import { s } from "../../core/json-schema.ts";
 import { defineProviderAction } from "../../core/provider-definition.ts";
-import { zeplinReadScope } from "./scopes.ts";
 
 const service = "zeplin";
 
@@ -108,26 +107,18 @@ const projectIdSchema = s.nonEmptyString("The project ID.");
 const projectInputSchema = (description: string): JsonSchema =>
   s.actionInput({ ...paginationProperties, projectId: projectIdSchema }, ["projectId"], description);
 
-export type ZeplinActionName =
-  | "get_current_user"
-  | "list_personal_projects"
-  | "get_project"
-  | "list_project_colors"
-  | "list_project_text_styles"
-  | "list_screen_versions";
-
 export const zeplinActions: ActionDefinition[] = [
   defineProviderAction(service, {
     name: "get_current_user",
+    operationType: "read",
     description: "Get the current authenticated Zeplin user profile.",
-    requiredScopes: [zeplinReadScope],
     inputSchema: emptyInputSchema,
     outputSchema: s.actionOutput({ user: anyObject }, "The output payload for this action."),
   }),
   defineProviderAction(service, {
     name: "list_personal_projects",
+    operationType: "read",
     description: "List projects in the current user's Zeplin personal workspace.",
-    requiredScopes: [zeplinReadScope],
     inputSchema: paginationInputSchema,
     outputSchema: s.actionOutput(
       { projects: s.array("The list of projects.", zeplinProjectSummarySchema) },
@@ -136,8 +127,8 @@ export const zeplinActions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "get_project",
+    operationType: "read",
     description: "Get a Zeplin project by project ID.",
-    requiredScopes: [zeplinReadScope],
     inputSchema: s.actionInput(
       { projectId: s.nonEmptyString("The project ID to retrieve.") },
       ["projectId"],
@@ -156,8 +147,8 @@ export const zeplinActions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "list_project_colors",
+    operationType: "read",
     description: "List color tokens defined for a Zeplin project.",
-    requiredScopes: [zeplinReadScope],
     inputSchema: projectInputSchema("The input payload for this action."),
     outputSchema: s.actionOutput(
       { colors: s.array("The list of color tokens.", zeplinColorSchema) },
@@ -166,8 +157,8 @@ export const zeplinActions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "list_project_text_styles",
+    operationType: "read",
     description: "List text styles defined for a Zeplin project.",
-    requiredScopes: [zeplinReadScope],
     inputSchema: projectInputSchema("The input payload for this action."),
     outputSchema: s.actionOutput(
       { textStyles: s.array("The list of text styles.", zeplinTextStyleSchema) },
@@ -176,9 +167,9 @@ export const zeplinActions: ActionDefinition[] = [
   }),
   defineProviderAction(service, {
     name: "list_screen_versions",
+    operationType: "read",
     description:
       "List versions of a Zeplin screen. This action requires both projectId and screenId to match the official endpoint.",
-    requiredScopes: [zeplinReadScope],
     inputSchema: s.actionInput(
       {
         ...paginationProperties,

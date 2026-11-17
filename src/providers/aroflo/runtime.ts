@@ -1,5 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import {
   compactObject,
@@ -14,7 +14,7 @@ import { providerUserAgent, ProviderRequestError, readProviderJsonBody } from ".
 
 export const arofloApiBaseUrl = "https://api.aroflo.com/v2";
 
-export const arofloActionHandlers: Record<string, ProviderRuntimeHandler<ApiKeyProviderContext>> = {
+export const arofloActionHandlers: ProviderActionHandlers<"aroflo", ProviderRuntimeHandler<ApiKeyProviderContext>> = {
   async get_health_status(_input, context) {
     const object = await request("/healthcheck", {}, context, "execute");
     return compactObject({
@@ -113,7 +113,6 @@ export async function validateArofloCredential(
   const object = await request("/clients", { _fields: "id,name" }, { apiKey, fetcher, signal }, "validate");
   return {
     profile: { accountId: "aroflo", displayName: "AroFlo API Token" },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: arofloApiBaseUrl,
       validationEndpoint: "/clients",
@@ -125,7 +124,7 @@ export async function validateArofloCredential(
 async function request(
   path: string,
   query: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: "validate" | "execute",
 ): Promise<Record<string, unknown>> {
   const url = new URL(`${arofloApiBaseUrl}${path}`);

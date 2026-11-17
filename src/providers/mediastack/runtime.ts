@@ -1,6 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { MediastackActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import {
   compactObject,
@@ -10,30 +9,28 @@ import {
   optionalString,
   optionalStringOrNull,
   requiredRecord,
-  requiredString,
 } from "../../core/cast.ts";
 import {
   createProviderTimeout,
   isAbortLikeError,
   providerUserAgent,
   ProviderRequestError,
+  requiredInputString,
 } from "../provider-runtime.ts";
 
-const mediastackApiBaseUrl = "https://api.mediastack.com/v1";
-const mediastackDefaultRequestTimeoutMs = 30_000;
+export const mediastackApiBaseUrl = "https://api.mediastack.com/v1";
 
 type MediastackPhase = "validate" | "execute";
 type MediastackQueryValue = string | number | undefined;
-type MediastackActionContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
-type MediastackActionHandler = (input: Record<string, unknown>, context: MediastackActionContext) => Promise<unknown>;
+type MediastackActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-interface MediastackRequestInput extends MediastackActionContext {
+interface MediastackRequestInput extends ApiKeyProviderContext {
   path: string;
   query: Record<string, MediastackQueryValue>;
   phase: MediastackPhase;
 }
 
-export const mediastackActionHandlers: Record<MediastackActionName, MediastackActionHandler> = {
+export const mediastackActionHandlers: ProviderActionHandlers<"mediastack", MediastackActionHandler> = {
   search_news_sources(input, context) {
     return searchNewsSources(input, context);
   },
@@ -65,7 +62,6 @@ export async function validateMediastackCredential(
       accountId: "mediastack",
       displayName: "Mediastack API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       validationEndpoint: "/news",
       apiBaseUrl: mediastackApiBaseUrl,
@@ -76,7 +72,7 @@ export async function validateMediastackCredential(
   };
 }
 
-async function searchNewsSources(input: Record<string, unknown>, context: MediastackActionContext): Promise<unknown> {
+async function searchNewsSources(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
   const payload = await requestMediastackJson({
     ...context,
     path: "/sources",
@@ -99,7 +95,7 @@ async function searchNewsSources(input: Record<string, unknown>, context: Medias
   };
 }
 
-async function searchLiveNews(input: Record<string, unknown>, context: MediastackActionContext): Promise<unknown> {
+async function searchLiveNews(input: Record<string, unknown>, context: ApiKeyProviderContext): Promise<unknown> {
   const payload = await requestMediastackJson({
     ...context,
     path: "/news",
@@ -125,7 +121,7 @@ async function searchLiveNews(input: Record<string, unknown>, context: Mediastac
 }
 
 async function requestMediastackJson(input: MediastackRequestInput): Promise<Record<string, unknown>> {
-  const timeout = createProviderTimeout(input.signal, mediastackDefaultRequestTimeoutMs);
+  const timeout = createProviderTimeout(input.signal);
 
   try {
     const response = await input.fetcher(buildMediastackUrl(input.path, input.query, input.apiKey), {
@@ -291,8 +287,4 @@ function requiredInteger(value: unknown, fieldName: string): number {
     throw new ProviderRequestError(502, `Mediastack response is missing ${fieldName}`);
   }
   return numeric;
-}
-
-function requiredInputString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, (message) => new ProviderRequestError(400, message));
 }

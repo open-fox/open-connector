@@ -4,8 +4,7 @@ import type {
   ProviderExecutors,
   ProviderProxyExecutor,
 } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { RecurlyActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { Buffer } from "node:buffer";
 import {
@@ -17,12 +16,9 @@ import {
   optionalString,
   requiredString,
 } from "../../core/cast.ts";
-import {
-  defineApiKeyProviderExecutors,
-  defineProviderProxy,
-  ProviderRequestError,
-  providerUserAgent,
-} from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent, requiredInputString } from "../provider-runtime.ts";
 
 const service = "recurly";
 const recurlyApiBaseUrl = "https://v3.recurly.com";
@@ -37,7 +33,7 @@ interface RecurlyListPayload {
   next?: unknown;
 }
 
-export const recurlyActionHandlers: Record<RecurlyActionName, RecurlyActionHandler> = {
+export const recurlyActionHandlers: ProviderActionHandlers<"recurly", RecurlyActionHandler> = {
   async list_accounts(input, context) {
     const payload = await requestRecurlyList(input, context, "/accounts", {
       ...buildCommonListQuery(input),
@@ -175,9 +171,7 @@ export async function validateRecurlyCredential(
     profile: {
       accountId: siteId ? `recurly:${siteId}` : "recurly",
       displayName: siteId ? `Recurly ${siteId}` : "Recurly API Key",
-      grantedScopes: [],
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: recurlyApiBaseUrl,
       validationEndpoint: "/accounts?limit=1",
@@ -213,7 +207,7 @@ async function requestRecurlyList(
 
 async function requestRecurlyJson(input: {
   path: string;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   mode: "validate" | "execute";
   method?: string;
   query?: Record<string, RecurlyQueryValue>;
@@ -440,10 +434,6 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
   const record = optionalRecord(value);
   if (!record) throw new ProviderRequestError(502, `Recurly response is missing ${label} object`);
   return record;
-}
-
-function requiredInputString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, (message) => new ProviderRequestError(400, message));
 }
 
 function requiredOutputString(value: unknown, fieldName: string): string {

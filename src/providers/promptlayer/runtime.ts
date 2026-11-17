@@ -1,5 +1,6 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import {
   compactObject,
@@ -19,15 +20,14 @@ import {
 } from "../../core/cast.ts";
 import { compactJson } from "../../core/request.ts";
 import {
-  createProviderTimeout,
-  isAbortLikeError,
   ProviderRequestError,
+  providerResponseError,
   providerUserAgent,
   readProviderJsonBody,
+  runProviderRequest,
 } from "../provider-runtime.ts";
 
 export const promptLayerApiBaseUrl = "https://api.promptlayer.com";
-const promptLayerDefaultRequestTimeoutMs = 30_000;
 
 type PromptLayerPhase = "validate" | "execute";
 type PromptLayerMethod = "GET" | "POST";
@@ -42,7 +42,10 @@ interface PromptLayerRequestInput {
   phase: PromptLayerPhase;
 }
 
-export const promptLayerActionHandlers: Record<string, ProviderRuntimeHandler<ApiKeyProviderContext>> = {
+export const promptLayerActionHandlers: ProviderActionHandlers<
+  "promptlayer",
+  ProviderRuntimeHandler<ApiKeyProviderContext>
+> = {
   async get_request(input, context) {
     const payload = await requestPromptLayerJson({
       method: "GET",
@@ -179,9 +182,7 @@ export async function validatePromptLayerCredential(
   return {
     profile: {
       displayName: "PromptLayer API Key",
-      grantedScopes: [],
     },
-    grantedScopes: [],
     metadata: compactObject({
       validationEndpoint: "/prompt-templates",
       totalPromptTemplates: optionalInteger(payload.total),
@@ -191,8 +192,7 @@ export async function validatePromptLayerCredential(
 }
 
 async function requestPromptLayerJson(input: PromptLayerRequestInput): Promise<Record<string, unknown>> {
-  const timeout = createProviderTimeout(input.context.signal, promptLayerDefaultRequestTimeoutMs);
-  try {
+  return runProviderRequest({ signal: input.context.signal, label: "PromptLayer" }, async (signal) => {
     const headers: Record<string, string> = {
       accept: "application/json",
       "user-agent": providerUserAgent,
@@ -206,7 +206,7 @@ async function requestPromptLayerJson(input: PromptLayerRequestInput): Promise<R
       method: input.method,
       headers,
       body: input.body === undefined ? undefined : JSON.stringify(input.body),
-      signal: timeout.signal,
+      signal,
     });
     const payload = await readPromptLayerPayload(response);
     if (!response.ok) {
@@ -217,20 +217,7 @@ async function requestPromptLayerJson(input: PromptLayerRequestInput): Promise<R
       throw new ProviderRequestError(502, "PromptLayer returned an invalid payload");
     }
     return record;
-  } catch (error) {
-    if (error instanceof ProviderRequestError) {
-      throw error;
-    }
-    if (timeout.didTimeout() || isAbortLikeError(error)) {
-      throw new ProviderRequestError(504, "PromptLayer request timed out");
-    }
-    throw new ProviderRequestError(
-      502,
-      error instanceof Error ? `PromptLayer request failed: ${error.message}` : "PromptLayer request failed",
-    );
-  } finally {
-    timeout.cleanup();
-  }
+  });
 }
 
 function buildPromptLayerUrl(path: string, query: Record<string, PromptLayerQueryValue> = {}): URL {
@@ -310,7 +297,7 @@ function normalizePromptTemplateList(payload: Record<string, unknown>): {
   raw: Record<string, unknown>;
 } {
   return {
-    items: objectArray(payload.items, "PromptLayer prompt template list items", createPromptLayerResponseError).map(
+    items: objectArray(payload.items, "PromptLayer prompt template list items", providerResponseError).map(
       normalizePromptTemplateSummary,
     ),
     page: requireResponseInteger(payload.page, "PromptLayer prompt template list page"),
@@ -333,16 +320,12 @@ function normalizePromptTemplateSummary(record: Record<string, unknown>): Record
     promptTemplate: requiredRecord(
       record.prompt_template,
       "PromptLayer prompt template prompt_template",
-      createPromptLayerResponseError,
+      providerResponseError,
     ),
     metadata: optionalRecord(record.metadata) ?? null,
     commitMessage: optionalStringOrNull(record.commit_message),
     llmKwargs: optionalRecord(record.llm_kwargs) ?? null,
-    externalIds: objectArray(
-      record.external_ids,
-      "PromptLayer prompt template external_ids",
-      createPromptLayerResponseError,
-    ),
+    externalIds: objectArray(record.external_ids, "PromptLayer prompt template external_ids", providerResponseError),
     raw: record,
   };
 }
@@ -355,7 +338,7 @@ function normalizePromptTemplate(record: Record<string, unknown>): Record<string
     promptTemplate: requiredRecord(
       record.prompt_template,
       "PromptLayer prompt template prompt_template",
-      createPromptLayerResponseError,
+      providerResponseError,
     ),
     metadata: optionalRecord(record.metadata) ?? null,
     commitMessage: optionalStringOrNull(record.commit_message),
@@ -381,7 +364,7 @@ function normalizeRequestLog(record: Record<string, unknown>): Record<string, un
     promptBlueprint: requiredRecord(
       record.prompt_blueprint,
       "PromptLayer request prompt_blueprint",
-      createPromptLayerResponseError,
+      providerResponseError,
     ),
     raw: record,
   };
@@ -389,9 +372,7 @@ function normalizeRequestLog(record: Record<string, unknown>): Record<string, un
 
 function normalizeTableList(payload: Record<string, unknown>): Record<string, unknown> {
   return {
-    tables: objectArray(payload.data, "PromptLayer table list data", createPromptLayerResponseError).map(
-      normalizeTable,
-    ),
+    tables: objectArray(payload.data, "PromptLayer table list data", providerResponseError).map(normalizeTable),
     nextCursor: optionalStringOrNull(payload.next_cursor),
     hasMore: requireResponseBoolean(payload.has_more, "PromptLayer table list has_more"),
     raw: payload,
@@ -413,9 +394,7 @@ function normalizeTable(record: Record<string, unknown>): Record<string, unknown
 
 function normalizeSheetList(payload: Record<string, unknown>): Record<string, unknown> {
   return {
-    sheets: objectArray(payload.data, "PromptLayer sheet list data", createPromptLayerResponseError).map(
-      normalizeSheet,
-    ),
+    sheets: objectArray(payload.data, "PromptLayer sheet list data", providerResponseError).map(normalizeSheet),
     nextCursor: optionalStringOrNull(payload.next_cursor),
     hasMore: requireResponseBoolean(payload.has_more, "PromptLayer sheet list has_more"),
     raw: payload,
@@ -439,7 +418,7 @@ function normalizeSheet(record: Record<string, unknown>): Record<string, unknown
 
 function normalizeRowList(payload: Record<string, unknown>): Record<string, unknown> {
   return {
-    rows: objectArray(payload.data, "PromptLayer row list data", createPromptLayerResponseError).map(normalizeRow),
+    rows: objectArray(payload.data, "PromptLayer row list data", providerResponseError).map(normalizeRow),
     columns: optionalObjectArray(
       payload.columns,
       "PromptLayer row list column",
@@ -457,7 +436,7 @@ function normalizeRowList(payload: Record<string, unknown>): Record<string, unkn
 function normalizeRow(record: Record<string, unknown>): Record<string, unknown> {
   return {
     rowIndex: requireResponseInteger(record.row_index, "PromptLayer row row_index"),
-    cells: normalizeCells(requiredRecord(record.cells, "PromptLayer row cells", createPromptLayerResponseError)),
+    cells: normalizeCells(requiredRecord(record.cells, "PromptLayer row cells", providerResponseError)),
     raw: record,
   };
 }
@@ -480,7 +459,7 @@ function normalizeCells(cells: Record<string, unknown>): Record<string, unknown>
   return Object.fromEntries(
     Object.entries(cells).map(([columnId, value]) => [
       columnId,
-      normalizeCell(requiredRecord(value, `PromptLayer cell ${columnId}`, createPromptLayerResponseError)),
+      normalizeCell(requiredRecord(value, `PromptLayer cell ${columnId}`, providerResponseError)),
     ]),
   );
 }
@@ -527,10 +506,6 @@ function normalizeRequestMetrics(record: Record<string, unknown>): Record<string
             () => new ProviderRequestError(502, "PromptLayer cell request_metrics.trace_ids are invalid"),
           ),
   });
-}
-
-function createPromptLayerResponseError(message: string): ProviderRequestError {
-  return new ProviderRequestError(502, message);
 }
 
 function requireResponseString(value: unknown, fieldName: string): string {

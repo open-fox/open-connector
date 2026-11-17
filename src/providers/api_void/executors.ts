@@ -1,22 +1,21 @@
 import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { ApiVoidActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { isIP } from "node:net";
 import { compactObject, optionalBoolean, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
 import { assertPublicHttpUrl } from "../../core/request.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
 import {
   createProviderTimeout,
-  defineApiKeyProviderExecutors,
-  defineProviderProxy,
   isAbortLikeError,
+  providerInputError,
   providerUserAgent,
   ProviderRequestError,
 } from "../provider-runtime.ts";
 
 const service = "api_void";
 const apiVoidApiBaseUrl = "https://api.apivoid.com";
-const apiVoidRequestTimeoutMs = 30_000;
 
 type ApiVoidRequestPhase = "validate" | "execute";
 
@@ -39,7 +38,7 @@ interface ApiVoidQuota {
 interface ApiVoidRequestInput {
   path: string;
   body?: Record<string, unknown>;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   phase: ApiVoidRequestPhase;
 }
 
@@ -48,7 +47,7 @@ type ApiVoidActionHandler = (
   context: ApiKeyProviderContext,
 ) => Promise<ApiVoidActionOutput>;
 
-export const apiVoidActionHandlers: Record<ApiVoidActionName, ApiVoidActionHandler> = {
+export const apiVoidActionHandlers: ProviderActionHandlers<"api_void", ApiVoidActionHandler> = {
   get_account_info(_input, context) {
     return requestApiVoidForAction(context, "/v2/account-info");
   },
@@ -129,7 +128,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: "api_key",
         displayName: "APIVoid API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: apiVoidApiBaseUrl,
         validationEndpoint: "/v2/account-info",
@@ -154,7 +152,7 @@ function requestApiVoidForAction(
 }
 
 async function requestApiVoid(input: ApiVoidRequestInput): Promise<ApiVoidActionOutput> {
-  const timeout = createProviderTimeout(input.context.signal, apiVoidRequestTimeoutMs);
+  const timeout = createProviderTimeout(input.context.signal);
   let response: Response;
   let payload: unknown;
   try {
@@ -275,10 +273,6 @@ function readNestedNumber(input: Record<string, unknown>, objectKey: string, chi
   const object = optionalRecord(input[objectKey]);
   const value = object?.[childKey];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function providerInputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(400, message);
 }
 
 function normalizePublicUrl(value: unknown, fieldName: string): string {

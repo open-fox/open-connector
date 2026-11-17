@@ -4,35 +4,34 @@ import type {
   ProviderExecutors,
   ProviderProxyExecutor,
 } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderRequestContext } from "../provider-runtime.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
 import {
-  createProviderTimeout,
-  defineApiKeyProviderExecutors,
-  defineProviderProxy,
-  isAbortLikeError,
   providerUserAgent,
   ProviderRequestError,
   readProviderJsonBody,
+  runProviderRequest,
 } from "../provider-runtime.ts";
 
 const service = "beebole";
 const beeboleApiBaseUrl = "https://app.beebole.com";
 const beeboleGraphqlPath = "/graphql";
 const beeboleGraphqlEndpoint = `${beeboleApiBaseUrl}${beeboleGraphqlPath}`;
-const beeboleRequestTimeoutMs = 30_000;
 
 type BeeboleRequestPhase = "validate" | "execute";
 
 interface BeeboleGraphqlRequestOptions {
   apiKey: string;
   body: Record<string, unknown>;
-  context: Pick<ApiKeyProviderContext, "fetcher" | "signal">;
+  context: ProviderRequestContext;
   phase: BeeboleRequestPhase;
 }
 
-export const beeboleActionHandlers: Record<string, ProviderRuntimeHandler<ApiKeyProviderContext>> = {
+export const beeboleActionHandlers: ProviderActionHandlers<"beebole", ProviderRuntimeHandler<ApiKeyProviderContext>> = {
   execute_graphql(input, context) {
     return requestBeeboleGraphql({
       apiKey: context.apiKey,
@@ -83,7 +82,6 @@ export const credentialValidators: CredentialValidators = {
       profile: {
         displayName: "Beebole API Key",
       },
-      grantedScopes: [],
       metadata: {
         graphqlEndpoint: beeboleGraphqlEndpoint,
         validationEndpoint: beeboleGraphqlPath,
@@ -95,8 +93,7 @@ export const credentialValidators: CredentialValidators = {
 };
 
 async function requestBeeboleGraphql(input: BeeboleGraphqlRequestOptions): Promise<BeeboleGraphqlPayload> {
-  const timeout = createProviderTimeout(input.context.signal, beeboleRequestTimeoutMs);
-  try {
+  return runProviderRequest({ signal: input.context.signal, label: "Beebole GraphQL" }, async (signal) => {
     const response = await input.context.fetcher(beeboleGraphqlEndpoint, {
       method: "POST",
       headers: {
@@ -106,7 +103,7 @@ async function requestBeeboleGraphql(input: BeeboleGraphqlRequestOptions): Promi
         "user-agent": providerUserAgent,
       },
       body: JSON.stringify(input.body),
-      signal: timeout.signal,
+      signal,
     });
     const payload = await readProviderJsonBody(response, {
       emptyBody: null,
@@ -116,20 +113,7 @@ async function requestBeeboleGraphql(input: BeeboleGraphqlRequestOptions): Promi
       throw createBeeboleGraphqlError(response.status, payload, input.phase);
     }
     return normalizeBeeboleGraphqlPayload(payload);
-  } catch (error) {
-    if (error instanceof ProviderRequestError) {
-      throw error;
-    }
-    if (timeout.didTimeout() || isAbortLikeError(error)) {
-      throw new ProviderRequestError(504, "Beebole GraphQL request timed out");
-    }
-    throw new ProviderRequestError(
-      502,
-      error instanceof Error ? `Beebole GraphQL request failed: ${error.message}` : "Beebole GraphQL request failed",
-    );
-  } finally {
-    timeout.cleanup();
-  }
+  });
 }
 
 interface BeeboleGraphqlPayload extends Record<string, unknown> {

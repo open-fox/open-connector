@@ -1,11 +1,10 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { MailersendActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
-import { compactObject, optionalInteger, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
+import { providerUserAgent, ProviderRequestError, requiredInputString } from "../provider-runtime.ts";
 
-const mailersendApiBaseUrl = "https://api.mailersend.com";
+export const mailersendApiBaseUrl: string = "https://api.mailersend.com";
 const validationPath = "/v1/domains";
 
 type MailersendMode = "validate" | "execute";
@@ -13,14 +12,14 @@ type MailersendActionHandler = (input: Record<string, unknown>, context: ApiKeyP
 
 interface MailersendRequestOptions {
   path: string;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   mode: MailersendMode;
   method?: string;
   query?: Record<string, string | number | undefined>;
   body?: unknown;
 }
 
-export const mailersendActionHandlers: Record<MailersendActionName, MailersendActionHandler> = {
+export const mailersendActionHandlers: ProviderActionHandlers<"mailersend", MailersendActionHandler> = {
   async send_email(input, context) {
     if (!optionalString(input.text) && !optionalString(input.html)) {
       throw new ProviderRequestError(400, "text or html is required");
@@ -164,7 +163,6 @@ export async function validateMailersendCredential(
       accountId: firstDomainId ? `mailersend:domain:${firstDomainId}` : "mailersend",
       displayName: firstDomainName ?? "MailerSend API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       validationEndpoint: validationPath,
       domainCount: domains.length,
@@ -278,8 +276,4 @@ function buildMessagesQuery(input: Record<string, unknown>): Record<string, stri
     subject: optionalString(input.subject),
     domain_id: optionalString(input.domain_id),
   });
-}
-
-function requiredInputString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, (message) => new ProviderRequestError(400, message));
 }

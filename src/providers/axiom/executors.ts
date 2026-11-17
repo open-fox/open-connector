@@ -1,12 +1,14 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString, requiredRecord, requiredString } from "../../core/cast.ts";
+import { requireApiKeyCredential } from "../provider-credentials.ts";
+import { defineProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
 import {
-  defineProviderExecutors,
   ProviderRequestError,
+  providerResponseError,
   providerUserAgent,
-  requireApiKeyCredential,
   setSearchParams,
 } from "../provider-runtime.ts";
 
@@ -17,7 +19,7 @@ type AxiomPhase = "validate" | "execute";
 type AxiomMethod = "GET" | "POST" | "DELETE";
 type AxiomActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const axiomActionHandlers: Record<string, AxiomActionHandler> = {
+export const axiomActionHandlers: ProviderActionHandlers<"axiom", AxiomActionHandler> = {
   async list_datasets(_input, context) {
     return {
       datasets: await requestAxiomJson({
@@ -35,7 +37,7 @@ export const axiomActionHandlers: Record<string, AxiomActionHandler> = {
     });
 
     return {
-      dataset: requiredRecord(payload, "Axiom dataset response", providerPayloadError),
+      dataset: requiredRecord(payload, "Axiom dataset response", providerResponseError),
     };
   },
   async create_dataset(input, context) {
@@ -58,7 +60,7 @@ export const axiomActionHandlers: Record<string, AxiomActionHandler> = {
     });
 
     return {
-      dataset: requiredRecord(payload, "Axiom create dataset response", providerPayloadError),
+      dataset: requiredRecord(payload, "Axiom create dataset response", providerResponseError),
     };
   },
   async delete_dataset(input, context) {
@@ -95,13 +97,13 @@ export const axiomActionHandlers: Record<string, AxiomActionHandler> = {
       }),
       phase: "execute",
     });
-    const result = requiredRecord(payload, "Axiom APL query response", providerPayloadError);
+    const result = requiredRecord(payload, "Axiom APL query response", providerResponseError);
 
     return {
       result,
       datasetNames: readStringArray(result.datasetNames, "Axiom query datasetNames"),
       format: optionalString(result.format) ?? "",
-      status: requiredRecord(result.status, "Axiom query status", providerPayloadError),
+      status: requiredRecord(result.status, "Axiom query status", providerResponseError),
     };
   },
 };
@@ -117,6 +119,16 @@ export const executors: ProviderExecutors = defineProviderExecutors<ApiKeyProvid
       signal: context.signal,
       transitFiles: context.transitFiles,
     };
+  },
+});
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: axiomApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    if (!headers.has("accept")) headers.set("accept", "application/json");
   },
 });
 
@@ -140,7 +152,6 @@ export const credentialValidators: CredentialValidators = {
       profile: {
         displayName: "Axiom API Token",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: axiomApiBaseUrl,
         validationEndpoint: "/v2/datasets",
@@ -153,7 +164,7 @@ export const credentialValidators: CredentialValidators = {
 };
 
 async function requestAxiomJson(input: {
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   phase: AxiomPhase;
   method?: AxiomMethod;
@@ -270,10 +281,6 @@ function readStringArray(value: unknown, label: string): string[] {
     throw new ProviderRequestError(502, `${label} must be an array of strings`);
   }
   return value;
-}
-
-function providerPayloadError(message: string): ProviderRequestError {
-  return new ProviderRequestError(502, message);
 }
 
 function isAbortError(error: unknown): boolean {

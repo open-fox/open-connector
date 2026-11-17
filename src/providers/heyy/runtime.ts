@@ -1,11 +1,11 @@
 import type { ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { HeyyActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { optionalRecord, optionalString } from "../../core/cast.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
 import {
   createProviderTimeout,
-  defineApiKeyProviderExecutors,
   isAbortLikeError,
   ProviderRequestError,
   providerUserAgent,
@@ -18,7 +18,7 @@ const heyyRequestTimeoutMs = 15_000;
 type HeyyRequestPhase = "validate" | "execute";
 type HeyyActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const heyyActionHandlers: Record<HeyyActionName, HeyyActionHandler> = {
+export const heyyActionHandlers: ProviderActionHandlers<"heyy", HeyyActionHandler> = {
   list_contacts: listContacts,
   get_contact: getContact,
   create_contact: createContact,
@@ -37,7 +37,6 @@ export async function validateHeyyCredential(
   options: { fetcher: typeof fetch; signal?: AbortSignal },
 ): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   const payload = await heyyGetJson("/business", input.apiKey, options.fetcher, "validate", options.signal);
@@ -50,7 +49,6 @@ export async function validateHeyyCredential(
       accountId: businessId ?? "api_key",
       displayName: businessName ?? businessId ?? "Heyy API Key",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: heyyApiBaseUrl,
       businessId,

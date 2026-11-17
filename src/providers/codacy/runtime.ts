@@ -1,16 +1,14 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { CodacyActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
+import { compactObject, optionalBoolean, optionalString, positiveInteger, requiredRecord } from "../../core/cast.ts";
 import {
-  compactObject,
-  optionalBoolean,
-  optionalString,
-  positiveInteger,
-  requiredRecord,
-  requiredString,
-} from "../../core/cast.ts";
-import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+  providerInputError,
+  providerResponseError,
+  providerUserAgent,
+  ProviderRequestError,
+  requiredInputString,
+} from "../provider-runtime.ts";
 
 const codacyApiBaseUrl = "https://app.codacy.com";
 const codacyApiPathPrefix = "/api/v3";
@@ -21,10 +19,9 @@ interface CodacyCredentialInput {
 
 type CodacyRequestPhase = "validate" | "execute";
 type CodacyQueryValue = string | number | boolean | undefined;
-type CodacyRuntimeContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
 type CodacyActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const codacyActionHandlers: Record<CodacyActionName, CodacyActionHandler> = {
+export const codacyActionHandlers: ProviderActionHandlers<"codacy", CodacyActionHandler> = {
   async get_current_user(_input, context) {
     const payload = await requestCodacyJson<{ data?: unknown }>({
       context,
@@ -56,8 +53,8 @@ export const codacyActionHandlers: Record<CodacyActionName, CodacyActionHandler>
     const payload = await requestCodacyJson<{ data?: unknown; pagination?: unknown }>({
       context,
       path: `/analysis/organizations/${encodeURIComponent(
-        requireInputString(input.provider, "provider"),
-      )}/${encodeURIComponent(requireInputString(input.remoteOrganizationName, "remoteOrganizationName"))}/repositories`,
+        requiredInputString(input.provider, "provider"),
+      )}/${encodeURIComponent(requiredInputString(input.remoteOrganizationName, "remoteOrganizationName"))}/repositories`,
       query: compactObject({
         ...readPaginationQuery(input),
         search: optionalString(input.search),
@@ -77,9 +74,9 @@ export const codacyActionHandlers: Record<CodacyActionName, CodacyActionHandler>
     const payload = await requestCodacyJson<{ data?: unknown }>({
       context,
       path: `/analysis/organizations/${encodeURIComponent(
-        requireInputString(input.provider, "provider"),
-      )}/${encodeURIComponent(requireInputString(input.remoteOrganizationName, "remoteOrganizationName"))}/repositories/${encodeURIComponent(
-        requireInputString(input.repositoryName, "repositoryName"),
+        requiredInputString(input.provider, "provider"),
+      )}/${encodeURIComponent(requiredInputString(input.remoteOrganizationName, "remoteOrganizationName"))}/repositories/${encodeURIComponent(
+        requiredInputString(input.repositoryName, "repositoryName"),
       )}`,
       query: compactObject({
         branch: optionalString(input.branch),
@@ -122,7 +119,7 @@ export const codacyActionHandlers: Record<CodacyActionName, CodacyActionHandler>
   async list_tool_patterns(input, context) {
     const payload = await requestCodacyJson<{ data?: unknown; pagination?: unknown }>({
       context,
-      path: `/tools/${encodeURIComponent(requireInputString(input.toolUuid, "toolUuid"))}/patterns`,
+      path: `/tools/${encodeURIComponent(requiredInputString(input.toolUuid, "toolUuid"))}/patterns`,
       query: compactObject({
         ...readPaginationQuery(input),
         enabled: optionalBoolean(input.enabled),
@@ -140,8 +137,8 @@ export const codacyActionHandlers: Record<CodacyActionName, CodacyActionHandler>
   async get_tool_pattern(input, context) {
     const payload = await requestCodacyJson<{ data?: unknown }>({
       context,
-      path: `/tools/${encodeURIComponent(requireInputString(input.toolUuid, "toolUuid"))}/patterns/${encodeURIComponent(
-        requireInputString(input.patternId, "patternId"),
+      path: `/tools/${encodeURIComponent(requiredInputString(input.toolUuid, "toolUuid"))}/patterns/${encodeURIComponent(
+        requiredInputString(input.patternId, "patternId"),
       )}`,
       phase: "execute",
       notFoundAsInvalidInput: true,
@@ -157,7 +154,7 @@ export async function validateCodacyApiKey(
   input: CodacyCredentialInput,
   options: { fetcher: typeof fetch; signal?: AbortSignal },
 ): Promise<CredentialValidationResult> {
-  const context: CodacyRuntimeContext = {
+  const context: ApiKeyProviderContext = {
     apiKey: input.apiKey,
     fetcher: options.fetcher,
     signal: options.signal,
@@ -178,7 +175,6 @@ export async function validateCodacyApiKey(
       accountId,
       displayName,
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: `${codacyApiBaseUrl}${codacyApiPathPrefix}`,
       validationEndpoint: "/user",
@@ -190,7 +186,7 @@ export async function validateCodacyApiKey(
 }
 
 async function requestCodacyJson<T>(input: {
-  context: CodacyRuntimeContext;
+  context: ApiKeyProviderContext;
   path: string;
   phase: CodacyRequestPhase;
   query?: Record<string, CodacyQueryValue>;
@@ -205,7 +201,7 @@ async function requestCodacyJson<T>(input: {
 }
 
 async function codacyFetch(input: {
-  context: CodacyRuntimeContext;
+  context: ApiKeyProviderContext;
   path: string;
   query?: Record<string, CodacyQueryValue>;
 }): Promise<Response> {
@@ -251,10 +247,10 @@ async function toCodacyError(
     return new ProviderRequestError(429, message);
   }
   if (response.status === 400 || response.status === 422) {
-    return new ProviderRequestError(400, message);
+    return providerInputError(message);
   }
   if (response.status === 404 && notFoundAsInvalidInput) {
-    return new ProviderRequestError(400, message);
+    return providerInputError(message);
   }
 
   return new ProviderRequestError(response.status || 500, message);
@@ -310,15 +306,11 @@ function readResponseArray(value: unknown, fieldName: string): Array<Record<stri
   return value.map((item) => requiredRecord(item, fieldName, providerResponseError));
 }
 
-function requireInputString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, invalidInputError);
-}
-
 function readOptionalPositiveInteger(value: unknown, fieldName: string): number | undefined {
   if (value == null || value === "") {
     return undefined;
   }
-  return positiveInteger(value, fieldName, invalidInputError);
+  return positiveInteger(value, fieldName, providerInputError);
 }
 
 function readOptionalNumberAsString(value: unknown): string | undefined {
@@ -332,12 +324,4 @@ function pickFirstNonEmptyString(...values: Array<string | undefined>): string |
     }
   }
   return undefined;
-}
-
-function invalidInputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(400, message);
-}
-
-function providerResponseError(message: string): ProviderRequestError {
-  return new ProviderRequestError(502, message);
 }

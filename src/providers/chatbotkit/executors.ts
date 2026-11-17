@@ -1,17 +1,24 @@
 import type { QueryValue } from "../../core/request.ts";
-import type { CredentialValidationResult, CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type {
+  CredentialValidationResult,
+  CredentialValidators,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
 import { compactJson, queryParams } from "../../core/request.ts";
-import { defineApiKeyProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
 const service = "chatbotkit";
 const apiBaseUrl = "https://api.chatbotkit.com/api/v1";
 
 type Handler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const chatbotkitActionHandlers: Record<string, Handler> = {
+export const chatbotkitActionHandlers: ProviderActionHandlers<"chatbotkit", Handler> = {
   fetch_usage(_input, context) {
     return requestChatbotkit(context, "/usage/fetch");
   },
@@ -156,6 +163,13 @@ export const chatbotkitActionHandlers: Record<string, Handler> = {
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, chatbotkitActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: apiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }): Promise<CredentialValidationResult> {
     const context = { apiKey: input.apiKey, fetcher, signal };
@@ -166,7 +180,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: optionalString(firstTeam?.id) ?? "chatbotkit-api-key",
         displayName: optionalString(firstTeam?.name) ?? "ChatBotKit API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         validationEndpoint: "/team/list",
         apiBaseUrl,
@@ -198,7 +211,7 @@ function buildListQuery(input: Record<string, unknown>): Record<string, unknown>
 }
 
 async function requestChatbotkit(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   path: string,
   options: { method?: "GET" | "POST"; query?: Record<string, unknown>; body?: unknown } = {},
 ): Promise<unknown> {

@@ -1,17 +1,15 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { ZigpollActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
-import { compactObject, optionalInteger, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
+import { providerUserAgent, ProviderRequestError, requiredInputString } from "../provider-runtime.ts";
 
 export const zigpollApiBaseUrl = "https://v1.zigpoll.com";
 
 type ZigpollPhase = "validate" | "execute";
 type ZigpollMethod = "GET" | "POST";
 type ZigpollQueryValue = string | number | undefined;
-type ZigpollActionContext = ApiKeyProviderContext;
-type ZigpollActionHandler = (input: Record<string, unknown>, context: ZigpollActionContext) => Promise<unknown>;
+type ZigpollActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
 interface ZigpollRequestInput {
   path: string;
@@ -20,7 +18,7 @@ interface ZigpollRequestInput {
   body?: Record<string, unknown>;
 }
 
-export const zigpollActionHandlers: Record<ZigpollActionName, ZigpollActionHandler> = {
+export const zigpollActionHandlers: ProviderActionHandlers<"zigpoll", ZigpollActionHandler> = {
   get_current_user(_input, context) {
     return requestZigpollJson({ path: "/me" }, context, "execute");
   },
@@ -32,7 +30,7 @@ export const zigpollActionHandlers: Record<ZigpollActionName, ZigpollActionHandl
       {
         path: "/polls",
         query: {
-          accountId: readRequiredString(input.accountId, "accountId"),
+          accountId: requiredInputString(input.accountId, "accountId"),
         },
       },
       context,
@@ -44,7 +42,7 @@ export const zigpollActionHandlers: Record<ZigpollActionName, ZigpollActionHandl
       {
         path: "/poll",
         query: {
-          pollId: readRequiredString(input.pollId, "pollId"),
+          pollId: requiredInputString(input.pollId, "pollId"),
         },
       },
       context,
@@ -56,7 +54,7 @@ export const zigpollActionHandlers: Record<ZigpollActionName, ZigpollActionHandl
       {
         path: "/slides",
         query: {
-          pollId: readRequiredString(input.pollId, "pollId"),
+          pollId: requiredInputString(input.pollId, "pollId"),
         },
       },
       context,
@@ -89,7 +87,7 @@ export const zigpollActionHandlers: Record<ZigpollActionName, ZigpollActionHandl
         path: "/generate-survey-link",
         method: "POST",
         body: compactObject({
-          pollId: readRequiredString(input.pollId, "pollId"),
+          pollId: requiredInputString(input.pollId, "pollId"),
           metadata: optionalRecord(input.metadata),
           expiresAt: optionalString(input.expiresAt),
         }),
@@ -106,7 +104,7 @@ export async function validateZigpollCredential(
   signal?: AbortSignal,
 ): Promise<CredentialValidationResult> {
   const context = {
-    apiKey: readRequiredString(input.apiKey, "apiKey"),
+    apiKey: requiredInputString(input.apiKey, "apiKey"),
     fetcher,
     signal,
   };
@@ -121,7 +119,6 @@ export async function validateZigpollCredential(
       accountId: userId ?? email ?? "zigpoll",
       displayName: name ?? email ?? "Zigpoll API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: zigpollApiBaseUrl,
       validationEndpoint: "/me",
@@ -133,7 +130,7 @@ export async function validateZigpollCredential(
 
 async function requestZigpollJson(
   input: ZigpollRequestInput,
-  context: Pick<ZigpollActionContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: ZigpollPhase,
 ): Promise<unknown> {
   const url = buildZigpollUrl(input.path, input.query ?? {});
@@ -256,8 +253,4 @@ function readZigpollErrorMessage(payload: unknown): string | undefined {
   }
 
   return optionalString(record.message) ?? optionalString(record.error) ?? optionalString(record.errors);
-}
-
-function readRequiredString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, (message) => new ProviderRequestError(400, message));
 }

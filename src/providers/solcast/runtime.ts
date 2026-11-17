@@ -1,6 +1,6 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { SolcastActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext } from "../provider-executors.ts";
 
 import {
   compactObject,
@@ -27,7 +27,7 @@ const validationProbe = {
   output_parameters: "air_temp,dni,ghi",
 };
 
-export const solcastActionHandlers: Record<SolcastActionName, SolcastActionHandler> = {
+export const solcastActionHandlers: ProviderActionHandlers<"solcast", SolcastActionHandler> = {
   get_radiation_and_weather_forecast(input, context) {
     return executeTimeseriesRequest(
       "/data/forecast/radiation_and_weather",
@@ -61,7 +61,6 @@ export async function validateSolcastCredential(context: ApiKeyProviderContext):
       accountId: "solcast",
       displayName: "Solcast API Key",
     },
-    grantedScopes: [],
     metadata: {
       validationEndpoint: "/data/forecast/radiation_and_weather",
       apiBaseUrl: solcastApiBaseUrl,

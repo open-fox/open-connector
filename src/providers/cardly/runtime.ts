@@ -1,5 +1,6 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext } from "../provider-executors.ts";
 
 import {
   compactObject,
@@ -17,7 +18,7 @@ const cardlyBalancePath = "/account/balance";
 type CardlyRequestPhase = "validate" | "execute";
 type CardlyActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const cardlyActionHandlers: Record<string, CardlyActionHandler> = {
+export const cardlyActionHandlers: ProviderActionHandlers<"cardly", CardlyActionHandler> = {
   echo(input, context) {
     return executeEcho(input, context);
   },
@@ -54,7 +55,6 @@ export async function validateCardlyCredential(
       accountId: "cardly",
       displayName: "Cardly API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: cardlyApiBaseUrl,
       validationEndpoint: cardlyBalancePath,

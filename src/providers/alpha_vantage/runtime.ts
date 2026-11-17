@@ -1,7 +1,8 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 
 import { compactObject } from "../../core/cast.ts";
-import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { providerUserAgent, ProviderRequestError, providerInputError } from "../provider-runtime.ts";
 
 export const alphaVantageApiBaseUrl = "https://www.alphavantage.co";
 
@@ -19,7 +20,7 @@ type AlphaVantageActionHandler = (
   context: AlphaVantageActionContext,
 ) => Promise<unknown>;
 
-export const alphaVantageActionHandlers: Record<string, AlphaVantageActionHandler> = {
+export const alphaVantageActionHandlers: ProviderActionHandlers<"alpha_vantage", AlphaVantageActionHandler> = {
   search_symbols(input, context) {
     return executeSearchSymbols(input, context);
   },
@@ -354,7 +355,6 @@ export async function validateAlphaVantageCredential(
       accountId: "alpha_vantage_api_key",
       displayName: "Alpha Vantage API Key",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: alphaVantageApiBaseUrl,
       validationEndpoint: "/query",
@@ -621,7 +621,7 @@ function createAlphaVantageError(response: Response, payload: unknown, phase: Al
   }
 
   if (loweredMessage.includes("invalid api call")) {
-    return new ProviderRequestError(400, message);
+    return providerInputError(message);
   }
 
   if (response.status === 401 || response.status === 403) {

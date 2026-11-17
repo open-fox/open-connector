@@ -1,8 +1,10 @@
-import type { CredentialValidationResult, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { CredentialValidationResult, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalBoolean, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError, providerInputError } from "../provider-runtime.ts";
 
 const service = "render";
 const renderApiBaseUrl = "https://api.render.com/v1";
@@ -11,7 +13,7 @@ type RenderRequestPhase = "validate" | "execute";
 type RenderQueryValue = string | number | boolean | string[] | undefined;
 type RenderActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const renderActionHandlers: Record<string, RenderActionHandler> = {
+export const renderActionHandlers: ProviderActionHandlers<"render", RenderActionHandler> = {
   get_current_user(_input, context) {
     return getCurrentUser(context);
   },
@@ -46,6 +48,18 @@ export const renderActionHandlers: Record<string, RenderActionHandler> = {
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, renderActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: renderApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    if (!headers.has("accept")) {
+      headers.set("accept", "application/json");
+    }
+  },
+});
+
 export const credentialValidators = {
   async apiKey(
     input: { apiKey: string; values: Record<string, string> },
@@ -62,9 +76,7 @@ export const credentialValidators = {
       profile: {
         accountId: email,
         displayName: name || email,
-        grantedScopes: [],
       },
-      grantedScopes: [],
       metadata: compactObject({
         validationEndpoint: "/users",
         email,
@@ -223,7 +235,7 @@ async function resumeService(input: Record<string, unknown>, context: ApiKeyProv
 }
 
 async function requestRenderJson<T>(input: {
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   phase: RenderRequestPhase;
   method?: string;
@@ -243,7 +255,7 @@ async function requestRenderJson<T>(input: {
 }
 
 async function requestRenderAck(input: {
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   phase: RenderRequestPhase;
   method?: string;
@@ -258,7 +270,7 @@ async function requestRenderAck(input: {
 }
 
 async function renderFetch(input: {
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   method?: string;
   query?: Record<string, RenderQueryValue>;
@@ -319,10 +331,10 @@ async function toRenderError(
     return new ProviderRequestError(401, message);
   }
   if (response.status === 404 && notFoundAsInvalidInput) {
-    return new ProviderRequestError(400, message);
+    return providerInputError(message);
   }
   if (response.status === 400) {
-    return new ProviderRequestError(400, message);
+    return providerInputError(message);
   }
   if (response.status === 429) {
     return new ProviderRequestError(429, message);

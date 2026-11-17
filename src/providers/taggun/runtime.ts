@@ -1,11 +1,11 @@
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { TaggunActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { optionalBoolean, optionalNumber, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
 import { assertPublicHttpUrl, compactJson } from "../../core/request.ts";
-import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { providerInputError, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
-const taggunApiBaseUrl = "https://api.taggun.io";
+export const taggunApiBaseUrl = "https://api.taggun.io";
 const simpleUrlPath = "/api/receipt/v1/simple/url";
 const verboseUrlPath = "/api/receipt/v1/verbose/url";
 const campaignSettingsListPath = "/api/validation/v1/campaign/settings/list";
@@ -14,7 +14,7 @@ const campaignReceiptValidationUrlPath = "/api/validation/v1/campaign/receipt-va
 
 type TaggunActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
-export const taggunActionHandlers: Record<TaggunActionName, TaggunActionHandler> = {
+export const taggunActionHandlers: ProviderActionHandlers<"taggun", TaggunActionHandler> = {
   extract_receipt_simple_url(input, context) {
     return executeReceiptUrlExtraction(simpleUrlPath, input, context);
   },
@@ -49,7 +49,6 @@ export const taggunActionHandlers: Record<TaggunActionName, TaggunActionHandler>
 
 export async function validateTaggunCredential(): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   return {
@@ -57,7 +56,6 @@ export async function validateTaggunCredential(): Promise<{
       accountId: "taggun",
       displayName: "Taggun API Key",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: taggunApiBaseUrl,
       validationMode: "format_only",
@@ -310,8 +308,4 @@ function readStringArray(value: unknown): string[] {
     return [];
   }
   return value.filter((item): item is string => typeof item === "string");
-}
-
-function providerInputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(400, message);
 }

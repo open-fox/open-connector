@@ -37,10 +37,17 @@ export const provider: ProviderDefinition = {
     },
     {
       type: "oauth2",
+      requiredScopes: ["offline_access"],
       authorizationUrl: "https://dash.cloudflare.com/oauth2/auth",
       tokenUrl: "https://dash.cloudflare.com/oauth2/token",
       refreshTokenUrl: "https://dash.cloudflare.com/oauth2/token",
-      scopes: ["workers-scripts.read", "workers-scripts.write", "workers-ci.read", "workers-ci.write"],
+      scopes: [
+        "offline_access",
+        "workers-scripts.read",
+        "workers-scripts.write",
+        "workers-ci.read",
+        "workers-ci.write",
+      ],
       tokenEndpointAuthMethod: "client_secret_basic",
     },
   ],

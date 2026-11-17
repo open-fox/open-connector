@@ -1,5 +1,4 @@
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { CurrentsApiActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
 import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
@@ -10,7 +9,7 @@ type CurrentsApiActionHandler = (input: Record<string, unknown>, context: ApiKey
 
 export const currentsApiBaseUrl = "https://api.currentsapi.services";
 
-export const currentsApiActionHandlers: Record<CurrentsApiActionName, CurrentsApiActionHandler> = {
+export const currentsApiActionHandlers: ProviderActionHandlers<"currents_api", CurrentsApiActionHandler> = {
   get_latest_news(input, context) {
     return currentsApiRequest(
       {
@@ -74,7 +73,6 @@ export async function validateCurrentsApiCredential(
   signal?: AbortSignal,
 ): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   const { response } = await currentsApiRawRequest(
@@ -92,7 +90,6 @@ export async function validateCurrentsApiCredential(
       accountId: "api_key",
       displayName: "Currents API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       validationEndpoint: "/v1/auth",
       apiBaseUrl: currentsApiBaseUrl,
@@ -109,7 +106,7 @@ interface CurrentsApiRequestInput {
 
 async function currentsApiRequest(
   input: CurrentsApiRequestInput,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: CurrentsApiPhase,
 ): Promise<unknown> {
   const { payload } = await currentsApiRawRequest(input, context, phase);
@@ -118,7 +115,7 @@ async function currentsApiRequest(
 
 async function currentsApiRawRequest(
   input: CurrentsApiRequestInput,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: CurrentsApiPhase,
 ): Promise<{ response: Response; payload: unknown }> {
   const url = new URL(input.path, currentsApiBaseUrl);

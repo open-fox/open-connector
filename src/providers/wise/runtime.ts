@@ -1,11 +1,11 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { WiseActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
 import { providerUserAgent, ProviderRequestError, setSearchParams } from "../provider-runtime.ts";
 
-const wiseApiBaseUrl = "https://api.wise.com";
+export const wiseApiBaseUrl = "https://api.wise.com";
 const wiseValidationPath = "/v2/profiles";
 
 type WiseRequestMode = "validate" | "execute";
@@ -19,7 +19,7 @@ interface WiseRequestOptions {
   query?: Record<string, string | undefined>;
 }
 
-export const wiseActionHandlers: Record<WiseActionName, ProviderRuntimeHandler<ApiKeyProviderContext>> = {
+export const wiseActionHandlers: ProviderActionHandlers<"wise", ProviderRuntimeHandler<ApiKeyProviderContext>> = {
   async list_profiles(_input, context) {
     const payload = await requestWiseJson({
       path: wiseValidationPath,
@@ -90,7 +90,6 @@ export async function validateWiseCredential(
       accountId: profileId ? `wise:profile:${profileId}` : "wise:api_token",
       displayName: buildAccountLabel(firstProfile),
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: wiseApiBaseUrl,
       validationEndpoint: wiseValidationPath,

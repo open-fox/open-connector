@@ -1,5 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import {
   compactObject,
@@ -12,6 +12,8 @@ import {
 import { encodePathSegment } from "../../core/request.ts";
 import {
   createProviderTimeout,
+  providerInputError,
+  providerResponseError,
   providerUserAgent,
   ProviderRequestError,
   readProviderJsonBody,
@@ -34,7 +36,7 @@ export const leonardoAiValidationPath = "/models";
 const leonardoAiV1ApiBaseUrl = `${leonardoAiApiRootUrl}/v1`;
 const leonardoAiRequestTimeoutMs = 60_000;
 
-export const leonardoAiActionHandlers: Record<string, LeonardoAiActionHandler> = {
+export const leonardoAiActionHandlers: ProviderActionHandlers<"leonardo_ai", LeonardoAiActionHandler> = {
   list_models(_input, context) {
     return listModels(context);
   },
@@ -62,9 +64,7 @@ export async function validateLeonardoAiCredential(
   return {
     profile: {
       displayName: "Leonardo.Ai API Key",
-      grantedScopes: [],
     },
-    grantedScopes: [],
     metadata: {
       validationEndpoint: `${leonardoAiV2ApiBaseUrl}${leonardoAiValidationPath}`,
     },
@@ -143,10 +143,7 @@ async function getGeneration(input: Record<string, unknown>, context: ApiKeyProv
   };
 }
 
-async function leonardoAiRequest(
-  options: LeonardoAiRequestOptions,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
-): Promise<unknown> {
+async function leonardoAiRequest(options: LeonardoAiRequestOptions, context: ApiKeyProviderContext): Promise<unknown> {
   const url = new URL(`${options.baseUrl ?? leonardoAiV2ApiBaseUrl}${options.path}`);
   const headers = new Headers({
     accept: "application/json",
@@ -300,12 +297,4 @@ function readGeneratedImages(generation: Record<string, unknown>): Array<Record<
       },
     ];
   });
-}
-
-function providerInputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(400, message);
-}
-
-function providerResponseError(message: string): ProviderRequestError {
-  return new ProviderRequestError(502, message);
 }

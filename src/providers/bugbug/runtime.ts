@@ -1,16 +1,16 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
 import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
-const bugbugApiBaseUrl = "https://app.bugbug.io";
+export const bugbugApiBaseUrl = "https://app.bugbug.io";
 const bugbugValidationPath = "/api/v2/tests/";
 
 type BugbugRequestPhase = "validate" | "execute";
 type BugbugQueryValue = boolean | number | string | null | undefined;
-type BugbugActionContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
-type BugbugActionHandler = (input: Record<string, unknown>, context: BugbugActionContext) => Promise<unknown>;
+type BugbugActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
 interface BugbugRequestOptions {
   apiKey: string;
@@ -24,7 +24,7 @@ interface BugbugRequestOptions {
   notFoundAsInvalidInput?: boolean;
 }
 
-export const bugbugActionHandlers: Record<string, BugbugActionHandler> = {
+export const bugbugActionHandlers: ProviderActionHandlers<"bugbug", BugbugActionHandler> = {
   list_tests(input, context) {
     return listBugbugTests(input, context);
   },
@@ -78,7 +78,6 @@ export async function validateBugbugCredential(
       accountId: "api_token",
       displayName: "BugBug API Token",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: bugbugApiBaseUrl,
       validationEndpoint: bugbugValidationPath,
@@ -89,7 +88,7 @@ export async function validateBugbugCredential(
 
 async function listBugbugTests(
   input: Record<string, unknown>,
-  context: BugbugActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   return requestBugbugJson<Record<string, unknown>>({
     apiKey: context.apiKey,
@@ -108,7 +107,7 @@ async function listBugbugTests(
 
 async function getBugbugTest(
   input: Record<string, unknown>,
-  context: BugbugActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   return requestBugbugJson<Record<string, unknown>>({
     apiKey: context.apiKey,
@@ -122,7 +121,7 @@ async function getBugbugTest(
 
 async function listBugbugSuites(
   input: Record<string, unknown>,
-  context: BugbugActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   return requestBugbugJson<Record<string, unknown>>({
     apiKey: context.apiKey,
@@ -141,7 +140,7 @@ async function listBugbugSuites(
 
 async function getBugbugSuite(
   input: Record<string, unknown>,
-  context: BugbugActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   return requestBugbugJson<Record<string, unknown>>({
     apiKey: context.apiKey,
@@ -155,7 +154,7 @@ async function getBugbugSuite(
 
 async function listBugbugProfiles(
   input: Record<string, unknown>,
-  context: BugbugActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   return requestBugbugJson<Record<string, unknown>>({
     apiKey: context.apiKey,
@@ -172,7 +171,7 @@ async function listBugbugProfiles(
 
 async function listBugbugTestRuns(
   input: Record<string, unknown>,
-  context: BugbugActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   return requestBugbugJson<Record<string, unknown>>({
     apiKey: context.apiKey,
@@ -194,7 +193,7 @@ async function listBugbugTestRuns(
 
 async function runBugbugTest(
   input: Record<string, unknown>,
-  context: BugbugActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   return requestBugbugJson<Record<string, unknown>>({
     apiKey: context.apiKey,
@@ -213,7 +212,7 @@ async function runBugbugTest(
 
 async function getBugbugTestRunStatus(
   input: Record<string, unknown>,
-  context: BugbugActionContext,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   return requestBugbugJson<Record<string, unknown>>({
     apiKey: context.apiKey,

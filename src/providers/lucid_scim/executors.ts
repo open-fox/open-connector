@@ -1,9 +1,10 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { LucidScimActionName } from "./actions.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { optionalInteger, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "lucid_scim";
 const lucidScimApiBaseUrl = "https://users.lucid.app/scim/v2";
@@ -12,7 +13,7 @@ const lucidScimConfigPath = "/ServiceProviderConfig";
 type RequestPhase = "validate" | "execute";
 type LucidScimActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const lucidScimActionHandlers: Record<LucidScimActionName, LucidScimActionHandler> = {
+export const lucidScimActionHandlers: ProviderActionHandlers<"lucid_scim", LucidScimActionHandler> = {
   async get_service_provider_config(_input, context) {
     const payload = await requestLucidScimJson({
       path: lucidScimConfigPath,
@@ -74,6 +75,16 @@ export const lucidScimActionHandlers: Record<LucidScimActionName, LucidScimActio
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, lucidScimActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: lucidScimApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/scim+json, application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const apiKey = input.apiKey.trim();
@@ -96,7 +107,6 @@ export const credentialValidators: CredentialValidators = {
       profile: {
         displayName: "Lucid SCIM Bearer Token",
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl: lucidScimApiBaseUrl,
         validationEndpoint: lucidScimConfigPath,
@@ -108,7 +118,7 @@ export const credentialValidators: CredentialValidators = {
 
 async function requestLucidScimJson(input: {
   path: string;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   phase: RequestPhase;
   searchParams?: URLSearchParams;
 }): Promise<unknown> {

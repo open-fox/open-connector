@@ -4,22 +4,22 @@ import type {
   ProviderExecutors,
   ProviderProxyExecutor,
 } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { AirbrakeActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderRequestContext } from "../provider-runtime.ts";
 
 import { compactObject, optionalNumber, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
 import {
   createProviderTimeout,
-  defineApiKeyProviderExecutors,
-  defineProviderProxy,
   isAbortLikeError,
+  providerInputError,
   ProviderRequestError,
   providerUserAgent,
 } from "../provider-runtime.ts";
 
 const service = "airbrake";
 const airbrakeApiBaseUrl = "https://api.airbrake.io";
-const airbrakeRequestTimeoutMs = 30_000;
 
 type AirbrakeRequestPhase = "validate" | "execute";
 type AirbrakeQueryValue = string | number | boolean | undefined;
@@ -28,7 +28,7 @@ type AirbrakeActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 interface AirbrakeRequestInput {
   path: string;
   apiKey: string;
-  context: Pick<ApiKeyProviderContext, "fetcher" | "signal">;
+  context: ProviderRequestContext;
   phase: AirbrakeRequestPhase;
   method?: string;
   query?: Record<string, AirbrakeQueryValue>;
@@ -73,7 +73,7 @@ interface AirbrakeListResponse<T> {
   raw: Record<string, unknown>;
 }
 
-export const airbrakeActionHandlers: Record<AirbrakeActionName, AirbrakeActionHandler> = {
+export const airbrakeActionHandlers: ProviderActionHandlers<"airbrake", AirbrakeActionHandler> = {
   async list_projects(input, context) {
     const payload = await requestAirbrakeForAction(context, "/api/v4/projects", {
       page: readOptionalInteger(input.page, "page"),
@@ -225,7 +225,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: firstProject?.id == null ? "airbrake-api-key" : String(firstProject.id),
         displayName: firstProject?.name ? `Airbrake: ${firstProject.name}` : "Airbrake API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: airbrakeApiBaseUrl,
         validationEndpoint: "/api/v4/projects",
@@ -252,7 +251,7 @@ function requestAirbrakeForAction(
 }
 
 async function requestAirbrake(input: AirbrakeRequestInput): Promise<unknown> {
-  const timeout = createProviderTimeout(input.context.signal, airbrakeRequestTimeoutMs);
+  const timeout = createProviderTimeout(input.context.signal);
   try {
     const response = await input.context.fetcher(buildAirbrakeUrl(input.path, input.apiKey, input.query ?? {}), {
       method: input.method ?? "GET",
@@ -487,8 +486,4 @@ function readOptionalGroupOrder(value: unknown): string | undefined {
     return order;
   }
   throw new ProviderRequestError(400, "order must be last_notice, notice_count, weight, or created");
-}
-
-function providerInputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(400, message);
 }

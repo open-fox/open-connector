@@ -1,13 +1,16 @@
-import type { CredentialValidators, ExecutionContext, ProviderExecutors } from "../../core/types.ts";
-import type { FellowActionName } from "./actions.ts";
+import type {
+  CredentialValidators,
+  ExecutionContext,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 
-import { compactObject, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import {
-  defineProviderExecutors,
-  providerUserAgent,
-  ProviderRequestError,
-  requireApiKeyCredential,
-} from "../provider-runtime.ts";
+import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
+import { requireApiKeyCredential } from "../provider-credentials.ts";
+import { defineProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError, requiredInputString } from "../provider-runtime.ts";
 
 const service = "fellow";
 const fellowValidationPath = "/api/v1/me";
@@ -25,7 +28,7 @@ interface FellowActionContext {
 
 type FellowActionHandler = (input: Record<string, unknown>, context: FellowActionContext) => Promise<unknown>;
 
-export const fellowActionHandlers: Record<FellowActionName, FellowActionHandler> = {
+export const fellowActionHandlers: ProviderActionHandlers<"fellow", FellowActionHandler> = {
   get_current_user(_input, context) {
     return requestFellowJson({
       context,
@@ -133,6 +136,18 @@ export const executors: ProviderExecutors = defineProviderExecutors<FellowAction
   },
 });
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  async baseUrl(context) {
+    const credential = await requireApiKeyCredential(context, service);
+    return resolveFellowBaseUrl(credential.values, credential.metadata);
+  },
+  auth: { type: "api_key_header", name: "X-API-KEY" },
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const subdomain = normalizeFellowSubdomain(input.values.subdomain);
@@ -164,7 +179,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: workspaceId && userId ? `fellow:${workspaceId}:user:${userId}` : `fellow:${storedSubdomain}`,
         displayName: buildAccountLabel(userFullName, userEmail, workspaceName, storedSubdomain),
       },
-      grantedScopes: [],
       metadata: compactObject({
         subdomain: storedSubdomain,
         baseUrl: buildFellowBaseUrl(storedSubdomain),
@@ -372,8 +386,4 @@ function readRecordField(payload: unknown, key: string, context: string): Record
     throw new ProviderRequestError(502, `${context} is invalid`, payload);
   }
   return child;
-}
-
-function requiredInputString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, (message) => new ProviderRequestError(400, message));
 }

@@ -5,7 +5,7 @@ import type {
   ProviderExecutors,
   ProviderProxyExecutor,
 } from "../../core/types.ts";
-import type { TinybirdActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 
 import {
   compactObject,
@@ -15,13 +15,10 @@ import {
   requiredRecord,
   requiredString,
 } from "../../core/cast.ts";
-import {
-  defineProviderExecutors,
-  defineProviderProxy,
-  ProviderRequestError,
-  providerUserAgent,
-  requireApiKeyCredential,
-} from "../provider-runtime.ts";
+import { requireApiKeyCredential } from "../provider-credentials.ts";
+import { defineProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerInputError, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 import { tinybirdDefaultApiBaseUrl } from "./constants.ts";
 
 export const tinybirdAllowedApiBaseUrls: readonly string[] = [
@@ -65,7 +62,7 @@ interface TinybirdRequestInput {
   notFoundAsInvalidInput?: boolean;
 }
 
-export const tinybirdActionHandlers: Record<TinybirdActionName, TinybirdActionHandler> = {
+export const tinybirdActionHandlers: ProviderActionHandlers<"tinybird", TinybirdActionHandler> = {
   run_sql_query(input, context) {
     return runSqlQuery(input, context);
   },
@@ -133,7 +130,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: `tinybird:${host}`,
         displayName: `Tinybird ${host}`,
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl,
         validationEndpoint: tinybirdSqlPath,
@@ -179,7 +175,7 @@ async function runSqlQuery(input: Record<string, unknown>, context: TinybirdActi
     method: "POST",
     body: compactObject({
       ...optionalRecord(input.parameters),
-      q: requiredString(input.q, "q", createInvalidInputError),
+      q: requiredString(input.q, "q", providerInputError),
       pipeline: optionalString(input.pipeline),
       explain: optionalBoolean(input.explain),
     }),
@@ -194,7 +190,7 @@ async function runSqlQuery(input: Record<string, unknown>, context: TinybirdActi
 }
 
 async function runPipeEndpoint(input: Record<string, unknown>, context: TinybirdActionContext): Promise<unknown> {
-  const pipeName = requiredString(input.pipeName, "pipeName", createInvalidInputError);
+  const pipeName = requiredString(input.pipeName, "pipeName", providerInputError);
   const payload = await requestTinybirdJson({
     apiKey: context.apiKey,
     apiBaseUrl: context.apiBaseUrl,
@@ -231,7 +227,7 @@ async function listDataSources(input: Record<string, unknown>, context: Tinybird
 }
 
 async function getDataSource(input: Record<string, unknown>, context: TinybirdActionContext): Promise<unknown> {
-  const dataSourceName = requiredString(input.name, "name", createInvalidInputError);
+  const dataSourceName = requiredString(input.name, "name", providerInputError);
   const payload = await requestTinybirdJson({
     apiKey: context.apiKey,
     apiBaseUrl: context.apiBaseUrl,
@@ -246,7 +242,7 @@ async function getDataSource(input: Record<string, unknown>, context: TinybirdAc
   });
 
   return {
-    dataSource: requiredRecord(payload, "dataSource", createInvalidInputError),
+    dataSource: requiredRecord(payload, "dataSource", providerInputError),
   };
 }
 
@@ -350,13 +346,13 @@ function readTinybirdErrorMessage(payload: unknown): string | undefined {
 
 function normalizeDataSourceList(payload: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(payload)) {
-    return payload.map((item) => requiredRecord(item, "dataSource", createInvalidInputError));
+    return payload.map((item) => requiredRecord(item, "dataSource", providerInputError));
   }
 
-  const record = requiredRecord(payload, "payload", createInvalidInputError);
+  const record = requiredRecord(payload, "payload", providerInputError);
   const dataSources = record.datasources ?? record.data_sources ?? record.dataSources;
   if (Array.isArray(dataSources)) {
-    return dataSources.map((item) => requiredRecord(item, "dataSource", createInvalidInputError));
+    return dataSources.map((item) => requiredRecord(item, "dataSource", providerInputError));
   }
   return [];
 }
@@ -374,8 +370,4 @@ function readParameterRecord(value: unknown): Record<string, TinybirdQueryValue>
     }
   }
   return output;
-}
-
-function createInvalidInputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(400, message);
 }

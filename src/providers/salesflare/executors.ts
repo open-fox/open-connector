@@ -1,6 +1,10 @@
-import type { CredentialValidationResult, CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { SalesflareActionName } from "./actions.ts";
+import type {
+  CredentialValidationResult,
+  CredentialValidators,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import {
   compactObject,
@@ -11,7 +15,9 @@ import {
   optionalString,
   requiredString,
 } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "salesflare";
 const salesflareApiBaseUrl = "https://api.salesflare.com";
@@ -22,13 +28,13 @@ type SalesflareActionHandler = (input: Record<string, unknown>, context: ApiKeyP
 interface SalesflareRequestInput {
   method: "GET" | "POST" | "PUT";
   path: string;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   phase?: SalesflareRequestPhase;
   query?: Record<string, unknown>;
   body?: unknown;
 }
 
-export const salesflareActionHandlers: Record<SalesflareActionName, SalesflareActionHandler> = {
+export const salesflareActionHandlers: ProviderActionHandlers<"salesflare", SalesflareActionHandler> = {
   async get_current_user(_input, context) {
     return { user: await salesflareRequestJson({ method: "GET", path: "/me", context }) };
   },
@@ -151,6 +157,17 @@ export const salesflareActionHandlers: Record<SalesflareActionName, SalesflareAc
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, salesflareActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: salesflareApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+    headers.set("content-type", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }): Promise<CredentialValidationResult> {
     const apiKey = requiredString(input.apiKey, "apiKey", (message) => new ProviderRequestError(401, message));
@@ -170,7 +187,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: userId == null ? "salesflare-api-key" : String(userId),
         displayName: userName ?? userEmail ?? "Salesflare API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: salesflareApiBaseUrl,
         validationEndpoint: "/me",

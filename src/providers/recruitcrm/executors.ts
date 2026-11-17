@@ -1,10 +1,11 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { optionalInteger, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
 import { encodePathSegment } from "../../core/request.ts";
 import { arrayPayload, firstString, objectPayload, requestJson } from "../http-json-runtime.ts";
-import { defineApiKeyProviderExecutors } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
 
 const service = "recruitcrm";
 const apiBaseUrl = "https://api.recruitcrm.io/v1";
@@ -34,7 +35,7 @@ const gets = {
   job: { ...lists.jobs, inputKey: "job" },
 };
 
-export const recruitcrmActionHandlers: Record<string, Handler> = {
+export const recruitcrmActionHandlers: ProviderActionHandlers<"recruitcrm", Handler> = {
   list_candidates(input, context) {
     return listRecruitcrm(lists.candidates, input, context);
   },
@@ -63,6 +64,16 @@ export const recruitcrmActionHandlers: Record<string, Handler> = {
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, recruitcrmActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: apiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const payload = objectPayload(
@@ -78,7 +89,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: optionalString(firstCandidate?.slug) ?? optionalString(firstCandidate?.id),
         displayName: firstString(firstCandidate, ["name", "full_name", "email"]) ?? "Recruit CRM API Token",
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl,
         validationEndpoint: "/candidates?limit=1",
@@ -90,7 +100,7 @@ export const credentialValidators: CredentialValidators = {
 async function listRecruitcrm(
   spec: ListSpec,
   input: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const raw = objectPayload(
     await recruitcrmRequest(spec.path, context, "execute", {
@@ -109,7 +119,7 @@ async function listRecruitcrm(
 async function getRecruitcrm(
   spec: GetSpec,
   input: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
 ): Promise<Record<string, unknown>> {
   const id = encodePathSegment(requiredString(input[spec.inputKey], spec.inputKey));
   const raw = objectPayload(await recruitcrmRequest(`${spec.path}/${id}`, context), spec.inputKey);
@@ -121,7 +131,7 @@ async function getRecruitcrm(
 
 function recruitcrmRequest(
   path: string,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: "validate" | "execute" = "execute",
   query: Record<string, number | undefined> = {},
 ): Promise<unknown> {

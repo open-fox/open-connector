@@ -1,6 +1,6 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { UserlistActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
 import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
@@ -9,7 +9,7 @@ export const userlistPushApiBaseUrl = "https://push.userlist.com";
 
 type UserlistActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
-export const userlistActionHandlers: Record<UserlistActionName, UserlistActionHandler> = {
+export const userlistActionHandlers: ProviderActionHandlers<"userlist", UserlistActionHandler> = {
   push_user(input, context) {
     assertPushUserInput(input);
     return postAccepted("/users", input, context);
@@ -36,7 +36,6 @@ export function validateUserlistCredential(): CredentialValidationResult {
       accountId: "userlist",
       displayName: "Userlist Push API Key",
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: userlistPushApiBaseUrl,
       validation: "No non-mutating Push API validation endpoint is documented by Userlist.",

@@ -1,6 +1,7 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { DocumensoActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
+import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import {
   nullableInteger,
@@ -11,7 +12,7 @@ import {
   requiredString,
 } from "../../core/cast.ts";
 import { encodePathSegment, queryParams } from "../../core/request.ts";
-import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { providerInputError, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
 export const documensoApiBaseUrl = "https://app.documenso.com/api/v2";
 
@@ -26,7 +27,7 @@ interface DocumensoRequestContext {
   signal?: AbortSignal;
 }
 
-export const documensoActionHandlers: Record<DocumensoActionName, DocumensoActionHandler> = {
+export const documensoActionHandlers: ProviderActionHandlers<"documenso", DocumensoActionHandler> = {
   list_envelopes(input, context) {
     return executeListEnvelopes(input, context);
   },
@@ -62,9 +63,7 @@ export async function validateDocumensoCredential(
     profile: {
       accountId: "documenso-api-token",
       displayName: "Documenso API Token",
-      grantedScopes: [],
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: documensoApiBaseUrl,
       validationEndpoint: documensoValidationPath,
@@ -353,8 +352,4 @@ function readNullableInteger(input: Record<string, unknown>, key: string): numbe
     return value;
   }
   throw new ProviderRequestError(502, `Documenso response missing ${key}`);
-}
-
-function providerInputError(message: string): ProviderRequestError {
-  return new ProviderRequestError(400, message);
 }

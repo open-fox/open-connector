@@ -1,17 +1,24 @@
 import type { QueryValue } from "../../core/request.ts";
-import type { CredentialValidationResult, CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type {
+  CredentialValidationResult,
+  CredentialValidators,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
 import { queryParams } from "../../core/request.ts";
-import { defineApiKeyProviderExecutors, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
 const service = "chatwork";
 const apiBaseUrl = "https://api.chatwork.com/v2";
 
 type Handler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const chatworkActionHandlers: Record<string, Handler> = {
+export const chatworkActionHandlers: ProviderActionHandlers<"chatwork", Handler> = {
   async get_me(_input, context) {
     return { profile: await requestObject(context, "/me") };
   },
@@ -134,6 +141,16 @@ export const chatworkActionHandlers: Record<string, Handler> = {
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, chatworkActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: apiBaseUrl,
+  auth: { type: "api_key_header", name: "X-ChatWorkToken" },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }): Promise<CredentialValidationResult> {
     const profile = await requestObject({ apiKey: input.apiKey, fetcher, signal }, "/me");
@@ -142,7 +159,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: String(profile.account_id ?? "api_key"),
         displayName: optionalString(profile.name) ?? "Chatwork API Token",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl,
         validationEndpoint: "/me",
@@ -155,7 +171,7 @@ export const credentialValidators: CredentialValidators = {
 };
 
 async function requestObject(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   path: string,
   options: RequestOptions = {},
 ): Promise<Record<string, unknown>> {
@@ -166,7 +182,7 @@ async function requestObject(
 }
 
 async function requestArray(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   path: string,
   options: RequestOptions = {},
 ): Promise<unknown[]> {
@@ -182,7 +198,7 @@ interface RequestOptions {
 }
 
 async function requestPayload(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   path: string,
   options: RequestOptions = {},
 ): Promise<unknown> {

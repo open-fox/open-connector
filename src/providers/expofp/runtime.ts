@@ -1,21 +1,20 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { compactObject, optionalBoolean, optionalRecord, optionalString } from "../../core/cast.ts";
 import {
-  createProviderTimeout,
-  isAbortLikeError,
   ProviderRequestError,
   providerUserAgent,
+  runProviderRequest,
+  providerInputError,
 } from "../provider-runtime.ts";
 
 export const expofpApiBaseUrl = "https://app.expofp.com/api/v1";
-const expofpDefaultRequestTimeoutMs = 30_000;
 
 type ExpofpPhase = "validate" | "execute";
 type ExpofpActionHandler = ProviderRuntimeHandler<ApiKeyProviderContext>;
 
-export const expofpActionHandlers: Record<string, ExpofpActionHandler> = {
+export const expofpActionHandlers: ProviderActionHandlers<"expofp", ExpofpActionHandler> = {
   async list_expos(_input, context) {
     return {
       expos: normalizeExpoList(await requestExpofpJson("/list-events", {}, context, "execute")),
@@ -123,7 +122,6 @@ export async function validateExpofpCredential(
       accountId: "expofp:api-token",
       displayName: firstExpo ? `ExpoFP ${firstExpo.name}` : "ExpoFP API Token",
     },
-    grantedScopes: [],
     metadata: compactObject({
       validationEndpoint: "/list-events",
       apiBaseUrl: expofpApiBaseUrl,
@@ -137,11 +135,10 @@ export async function validateExpofpCredential(
 async function requestExpofpJson(
   path: string,
   payload: Record<string, unknown>,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: ExpofpPhase,
 ): Promise<unknown> {
-  const timeout = createProviderTimeout(context.signal, expofpDefaultRequestTimeoutMs);
-  try {
+  return runProviderRequest({ signal: context.signal, label: "ExpoFP" }, async (signal) => {
     const response = await context.fetcher(new URL(path.replace(/^\//, ""), `${expofpApiBaseUrl}/`), {
       method: "POST",
       headers: {
@@ -153,27 +150,14 @@ async function requestExpofpJson(
         token: context.apiKey,
         ...payload,
       }),
-      signal: timeout.signal,
+      signal,
     });
     const parsed = await readExpofpPayload(response);
     if (!response.ok) {
       throw createExpofpError(response.status, parsed, phase);
     }
     return parsed;
-  } catch (error) {
-    if (error instanceof ProviderRequestError) {
-      throw error;
-    }
-    if (timeout.didTimeout() || isAbortLikeError(error)) {
-      throw new ProviderRequestError(504, "ExpoFP request timed out");
-    }
-    throw new ProviderRequestError(
-      502,
-      error instanceof Error ? `ExpoFP request failed: ${error.message}` : "ExpoFP request failed",
-    );
-  } finally {
-    timeout.cleanup();
-  }
+  });
 }
 
 async function readExpofpPayload(response: Response): Promise<unknown> {
@@ -194,7 +178,7 @@ function createExpofpError(status: number, payload: unknown, phase: ExpofpPhase)
     return new ProviderRequestError(429, message);
   }
   if (phase === "validate" && status >= 400 && status < 500) {
-    return new ProviderRequestError(400, message);
+    return providerInputError(message);
   }
   if (phase === "execute" && status === 401) {
     return new ProviderRequestError(401, message);

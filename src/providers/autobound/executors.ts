@@ -1,14 +1,11 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalBoolean, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
-import {
-  defineProviderExecutors,
-  ProviderRequestError,
-  providerUserAgent,
-  requireApiKeyCredential,
-  setSearchParams,
-} from "../provider-runtime.ts";
+import { requireApiKeyCredential } from "../provider-credentials.ts";
+import { defineProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent, setSearchParams } from "../provider-runtime.ts";
 
 const service = "autobound";
 const autoboundApiBaseUrl = "https://signals.autobound.ai";
@@ -18,7 +15,7 @@ type QueryValue = string | number | boolean | undefined;
 type AutoboundActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
 interface AutoboundRequestInput {
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   path: string;
   method?: "GET" | "POST";
   query?: Record<string, QueryValue>;
@@ -26,7 +23,7 @@ interface AutoboundRequestInput {
   phase: AutoboundRequestPhase;
 }
 
-export const autoboundActionHandlers: Record<string, AutoboundActionHandler> = {
+export const autoboundActionHandlers: ProviderActionHandlers<"autobound", AutoboundActionHandler> = {
   async get_account(_input, context) {
     const payload = await requestAutoboundJson({
       context,
@@ -193,7 +190,6 @@ export const credentialValidators: CredentialValidators = {
         displayName:
           optionalString(account.customerName) ?? optionalString(account.customerId) ?? "Autobound Signal API Key",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: autoboundApiBaseUrl,
         validationEndpoint: "/v1/account",
@@ -524,3 +520,9 @@ function stringifyQuery(input: Record<string, QueryValue>): Record<string, strin
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
+
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: "https://signals.autobound.ai",
+  auth: { type: "api_key_header", name: "x-api-key" },
+});

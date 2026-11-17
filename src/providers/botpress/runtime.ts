@@ -1,5 +1,6 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderFetch, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
+import type { ProviderFetch } from "../provider-runtime.ts";
 
 import { compactObject, optionalRecord, optionalString } from "../../core/cast.ts";
 import {
@@ -9,7 +10,7 @@ import {
   providerUserAgent,
 } from "../provider-runtime.ts";
 
-export interface BotpressContext extends Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal"> {
+export interface BotpressContext extends ApiKeyProviderContext {
   workspaceId: string;
 }
 
@@ -30,9 +31,8 @@ export const botpressApiBaseUrl = "https://api.botpress.cloud/v1/admin";
 
 const botpressRequestBaseUrl = "https://api.botpress.cloud/v1/admin/";
 const botpressValidationPath = "/bots";
-const botpressDefaultTimeoutMs = 30_000;
 
-export const botpressActionHandlers: Record<string, ProviderRuntimeHandler<BotpressContext>> = {
+export const botpressActionHandlers: ProviderActionHandlers<"botpress", ProviderRuntimeHandler<BotpressContext>> = {
   async list_workspaces(input, context) {
     return botpressRequest({
       apiKey: context.apiKey,
@@ -83,7 +83,6 @@ export async function validateBotpressCredential(
       accountId: `botpress:${workspaceId}`,
       displayName: `Botpress workspace ${workspaceId}`,
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: botpressApiBaseUrl,
       validationEndpoint: botpressValidationPath,
@@ -103,7 +102,7 @@ async function botpressRequest(input: BotpressRequestInput): Promise<unknown> {
     }
   }
 
-  const timeout = createProviderTimeout(input.signal, botpressDefaultTimeoutMs);
+  const timeout = createProviderTimeout(input.signal);
   try {
     const response = await input.fetcher(url, {
       method: input.method ?? "GET",

@@ -1,9 +1,11 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { createHash } from "node:crypto";
-import { compactObject, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { looseArray, compactObject, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "opensea";
 const openseaApiBaseUrl = "https://api.opensea.io";
@@ -11,7 +13,7 @@ const openseaApiBaseUrl = "https://api.opensea.io";
 type OpenseaRequestPhase = "validate" | "execute";
 type OpenseaActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const openseaActionHandlers: Record<string, OpenseaActionHandler> = {
+export const openseaActionHandlers: ProviderActionHandlers<"opensea", OpenseaActionHandler> = {
   async search(input, context) {
     const payload = await requestOpensea({
       path: "/api/v2/search",
@@ -27,7 +29,7 @@ export const openseaActionHandlers: Record<string, OpenseaActionHandler> = {
     const record = readObject(payload);
 
     return {
-      results: readArray(record.results),
+      results: looseArray(record.results),
       raw: record,
     };
   },
@@ -71,7 +73,7 @@ export const openseaActionHandlers: Record<string, OpenseaActionHandler> = {
     const record = readObject(payload);
 
     return {
-      nfts: readArray(record.nfts).map(normalizeNft),
+      nfts: looseArray(record.nfts).map(normalizeNft),
       pagination: normalizePagination(record),
       raw: record,
     };
@@ -102,7 +104,7 @@ export const openseaActionHandlers: Record<string, OpenseaActionHandler> = {
     const record = readObject(payload);
 
     return {
-      offers: readArray(record.offers).map(normalizeOrder),
+      offers: looseArray(record.offers).map(normalizeOrder),
       pagination: normalizePagination(record),
       raw: record,
     };
@@ -155,6 +157,16 @@ export const openseaActionHandlers: Record<string, OpenseaActionHandler> = {
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, openseaActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: openseaApiBaseUrl,
+  auth: { type: "api_key_header", name: "x-api-key" },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const payload = await requestOpensea({
@@ -168,15 +180,13 @@ export const credentialValidators: CredentialValidators = {
       phase: "validate",
     });
     const record = readObject(payload);
-    const firstCollection = optionalRecord(readArray(record.collections)[0]);
+    const firstCollection = optionalRecord(looseArray(record.collections)[0]);
 
     return {
       profile: {
         accountId: createHash("sha256").update(input.apiKey).digest("hex").slice(0, 16),
         displayName: "OpenSea API Key",
-        grantedScopes: [],
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: openseaApiBaseUrl,
         validationEndpoint: "/api/v2/collections",
@@ -189,7 +199,7 @@ export const credentialValidators: CredentialValidators = {
 
 async function requestOpensea(input: {
   path: string;
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   phase: OpenseaRequestPhase;
   query?: Record<string, unknown>;
 }): Promise<unknown> {
@@ -353,10 +363,6 @@ function readObject(payload: unknown): Record<string, unknown> {
   }
 
   return record;
-}
-
-function readArray(payload: unknown): unknown[] {
-  return Array.isArray(payload) ? payload : [];
 }
 
 function readRequiredString(value: unknown, fieldName: string): string {

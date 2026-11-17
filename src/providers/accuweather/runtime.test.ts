@@ -27,8 +27,8 @@ const locationPayload = {
 
 describe("AccuWeather executors", () => {
   it("validates API keys with the autocomplete endpoint and Bearer auth", async () => {
-    const fetcher = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => jsonResponse([locationPayload]),
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit): Promise<Response> =>
+      jsonResponse([locationPayload]),
     );
 
     const result = await credentialValidators.apiKey?.(
@@ -43,27 +43,22 @@ describe("AccuWeather executors", () => {
         accountId: "api_key",
         displayName: "AccuWeather API Key",
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl: "https://dataservice.accuweather.com",
         validationEndpoint: "/locations/v1/cities/autocomplete",
         validationLocationKey: "349727",
       },
     });
-    expect(fetcher).toHaveBeenCalledWith(
-      new URL("https://dataservice.accuweather.com/locations/v1/cities/autocomplete?q=New+York"),
-      expect.objectContaining({
-        method: "GET",
-        headers: expect.objectContaining({
-          authorization: "Bearer test_key",
-        }),
-      }),
-    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(String(url)).toBe("https://dataservice.accuweather.com/locations/v1/cities/autocomplete?q=New+York");
+    expect(init?.method).toBe("GET");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer test_key");
   });
 
   it("searches locations and normalizes AccuWeather location keys", async () => {
-    const fetcher = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => jsonResponse([locationPayload]),
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit): Promise<Response> =>
+      jsonResponse([locationPayload]),
     );
     vi.stubGlobal("fetch", fetcher);
 
@@ -99,9 +94,7 @@ describe("AccuWeather executors", () => {
       },
     });
     expect(fetcher).toHaveBeenCalledWith(
-      new URL(
-        "https://dataservice.accuweather.com/locations/v1/cities/search?q=New+York&language=en-us&details=true&offset=10&alias=0",
-      ),
+      "https://dataservice.accuweather.com/locations/v1/cities/search?q=New+York&language=en-us&details=true&offset=10&alias=0",
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({
@@ -127,8 +120,8 @@ describe("AccuWeather executors", () => {
         },
       ],
     };
-    const fetcher = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => jsonResponse(payload),
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit): Promise<Response> =>
+      jsonResponse(payload),
     );
     vi.stubGlobal("fetch", fetcher);
 
@@ -152,7 +145,7 @@ describe("AccuWeather executors", () => {
       },
     });
     expect(fetcher).toHaveBeenCalledWith(
-      new URL("https://dataservice.accuweather.com/forecasts/v1/daily/5day/349727?metric=true"),
+      "https://dataservice.accuweather.com/forecasts/v1/daily/5day/349727?metric=true",
       expect.objectContaining({
         method: "GET",
       }),
@@ -162,15 +155,14 @@ describe("AccuWeather executors", () => {
   it("maps execution 401 responses to authorization failures", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async (): Promise<Response> =>
-          jsonResponse(
-            {
-              Code: "Unauthorized",
-              Message: "API authorization failed.",
-            },
-            401,
-          ),
+      vi.fn(async (): Promise<Response> =>
+        jsonResponse(
+          {
+            Code: "Unauthorized",
+            Message: "API authorization failed.",
+          },
+          401,
+        ),
       ),
     );
 

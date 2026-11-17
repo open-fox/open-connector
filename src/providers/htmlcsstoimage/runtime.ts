@@ -1,4 +1,4 @@
-import type { HtmlCssToImageActionName } from "./actions.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 
 import { Buffer } from "node:buffer";
 import {
@@ -52,7 +52,7 @@ interface HtmlCssToImageRequestInput {
   phase: HtmlCssToImageRequestPhase;
 }
 
-export const htmlCssToImageActionHandlers: Record<HtmlCssToImageActionName, HtmlCssToImageActionHandler> = {
+export const htmlCssToImageActionHandlers: ProviderActionHandlers<"htmlcsstoimage", HtmlCssToImageActionHandler> = {
   create_image(input, context) {
     return createHtmlCssToImage(input, context);
   },
@@ -75,7 +75,6 @@ export async function validateHtmlCssToImageCredential(
   options: { fetcher: typeof fetch; signal?: AbortSignal },
 ): Promise<{
   profile: { accountId: string; displayName: string };
-  grantedScopes: string[];
   metadata: Record<string, unknown>;
 }> {
   const credential = {
@@ -96,7 +95,6 @@ export async function validateHtmlCssToImageCredential(
       accountId: `htmlcsstoimage:${credential.userId}`,
       displayName: `HTML/CSS to Image ${credential.userId}`,
     },
-    grantedScopes: [],
     metadata: {
       userId: credential.userId,
       apiBaseUrl: htmlCssToImageApiBaseUrl,

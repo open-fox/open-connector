@@ -1,9 +1,16 @@
-import type { CredentialValidationResult, CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type {
+  CredentialValidationResult,
+  CredentialValidators,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+} from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 import type { RentmanActionName } from "./actions.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "rentman";
 const rentmanApiBaseUrl = "https://api.rentman.net";
@@ -23,7 +30,7 @@ const rentmanItemPathByAction: Partial<Record<RentmanActionName, string>> = {
 
 type RentmanActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const rentmanActionHandlers: Record<RentmanActionName, RentmanActionHandler> = {
+export const rentmanActionHandlers: ProviderActionHandlers<"rentman", RentmanActionHandler> = {
   list_contacts(input, context) {
     return executeListAction("list_contacts", input, context);
   },
@@ -52,6 +59,21 @@ export const rentmanActionHandlers: Record<RentmanActionName, RentmanActionHandl
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, rentmanActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: rentmanApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    if (!headers.has("accept")) {
+      headers.set("accept", "application/json");
+    }
+    if (!headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   apiKey(input, { fetcher, signal }) {
     return validateRentmanCredential(input.apiKey, fetcher, signal);
@@ -74,9 +96,7 @@ async function validateRentmanCredential(
     profile: {
       accountId: "rentman-jwt",
       displayName: "Rentman JWT",
-      grantedScopes: [],
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: rentmanApiBaseUrl,
       validationEndpoint: "/contacts",
@@ -152,7 +172,7 @@ function rentmanUrl(path: string, query?: Record<string, string | number | undef
 }
 
 async function requestRentman(input: {
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
+  context: ApiKeyProviderContext;
   url: URL;
   mode: "validate" | "execute";
 }): Promise<unknown> {

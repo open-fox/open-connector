@@ -1,11 +1,16 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { compactObject, optionalInteger, optionalRecord, optionalString, requiredRecord } from "../../core/cast.ts";
-import { providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
+import {
+  providerResponseError,
+  providerUserAgent,
+  ProviderRequestError,
+  providerInputError,
+} from "../provider-runtime.ts";
 
-const workiomApiBaseUrl = "https://api.workiom.com";
-const workiomApiPathPrefix = "/api/services/app";
+export const workiomApiBaseUrl = "https://api.workiom.com";
+export const workiomApiPathPrefix = "/api/services/app";
 
 type WorkiomRequestPhase = "validate" | "execute";
 
@@ -17,7 +22,7 @@ interface WorkiomRequestInput {
   body?: Record<string, unknown>;
 }
 
-export const workiomActionHandlers: Record<string, ProviderRuntimeHandler<ApiKeyProviderContext>> = {
+export const workiomActionHandlers: ProviderActionHandlers<"workiom", ProviderRuntimeHandler<ApiKeyProviderContext>> = {
   async list_apps(_input, context): Promise<unknown> {
     const raw = await requestWorkiom({ path: "/Apps/GetAll", apiKey: context.apiKey }, context);
     return {
@@ -87,7 +92,7 @@ export const workiomActionHandlers: Record<string, ProviderRuntimeHandler<ApiKey
         method: "POST",
         apiKey: context.apiKey,
         query: { listId: readRequiredString(input, "listId") },
-        body: requiredRecord(input.record, "record", providerError),
+        body: requiredRecord(input.record, "record", providerResponseError),
       },
       context,
     );
@@ -111,7 +116,6 @@ export async function validateWorkiomCredential(
       accountId: "workiom_api_key",
       displayName: "Workiom API Key",
     },
-    grantedScopes: [],
     metadata: compactObject({
       apiBaseUrl: workiomApiBaseUrl,
       validationEndpoint: "/Apps/GetAll",
@@ -124,7 +128,7 @@ export async function validateWorkiomCredential(
 
 async function requestWorkiom(
   input: WorkiomRequestInput,
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   phase: WorkiomRequestPhase = "execute",
 ): Promise<Record<string, unknown>> {
   const url = new URL(`${workiomApiPathPrefix}${input.path}`, workiomApiBaseUrl);
@@ -188,7 +192,7 @@ function createWorkiomError(response: Response, payload: unknown, phase: Workiom
   if (response.status === 401 || response.status === 403 || record?.unAuthorizedRequest === true) {
     return new ProviderRequestError(phase === "validate" ? 400 : 401, message);
   }
-  if (response.status >= 400 && response.status < 500) return new ProviderRequestError(400, message);
+  if (response.status >= 400 && response.status < 500) return providerInputError(message);
   return new ProviderRequestError(response.status || 500, message);
 }
 
@@ -196,7 +200,7 @@ function readArrayFromPayload(payload: unknown, paths: string[]): Array<Record<s
   for (const path of paths) {
     const value = readPath(payload, path);
     if (Array.isArray(value)) {
-      return value.map((item) => requiredRecord(item, path, providerError));
+      return value.map((item) => requiredRecord(item, path, providerResponseError));
     }
   }
   return [];
@@ -208,7 +212,7 @@ function readObjectFromPayload(payload: unknown, paths: string[], fallback: unkn
     const record = optionalRecord(value);
     if (record) return record;
   }
-  return requiredRecord(fallback, "payload", providerError);
+  return requiredRecord(fallback, "payload", providerResponseError);
 }
 
 function readPath(payload: unknown, path: string): unknown {
@@ -246,8 +250,4 @@ function readRequiredString(input: Record<string, unknown>, key: string): string
 
 function readOptionalArray(value: unknown): unknown[] | undefined {
   return Array.isArray(value) ? value : undefined;
-}
-
-function providerError(message: string): ProviderRequestError {
-  return new ProviderRequestError(502, message);
 }

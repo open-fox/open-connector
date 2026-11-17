@@ -1,24 +1,19 @@
 import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
-import type { ConductorActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
-import { compactObject, optionalNumber, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import {
-  defineApiKeyProviderExecutors,
-  defineProviderProxy,
-  providerUserAgent,
-  ProviderRequestError,
-} from "../provider-runtime.ts";
+import { compactObject, optionalNumber, optionalRecord, optionalString } from "../../core/cast.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { providerUserAgent, ProviderRequestError, requiredInputString } from "../provider-runtime.ts";
 
 const service = "conductor";
 const conductorApiBaseUrl = "https://api.cm.conductor.com";
 const conductorWebsitesPath = "/v2/entities/websites";
 
 type ConductorRequestPhase = "validate" | "execute";
-type ConductorContext = Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">;
-type ConductorActionHandler = (input: Record<string, unknown>, context: ConductorContext) => Promise<unknown>;
+type ConductorActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const conductorActionHandlers: Record<ConductorActionName, ConductorActionHandler> = {
+export const conductorActionHandlers: ProviderActionHandlers<"conductor", ConductorActionHandler> = {
   list_websites(_input, context) {
     return requestWrappedConductorJson({
       path: conductorWebsitesPath,
@@ -33,7 +28,7 @@ export const conductorActionHandlers: Record<ConductorActionName, ConductorActio
       context,
       phase: "execute",
       query: {
-        website_id: readRequiredString(input.website_id, "website_id"),
+        website_id: requiredInputString(input.website_id, "website_id"),
       },
       wrapper: "array",
     });
@@ -44,8 +39,8 @@ export const conductorActionHandlers: Record<ConductorActionName, ConductorActio
       context,
       phase: "execute",
       query: compactObject({
-        website_id: readRequiredString(input.website_id, "website_id"),
-        scope: readRequiredString(input.scope, "scope"),
+        website_id: requiredInputString(input.website_id, "website_id"),
+        scope: requiredInputString(input.scope, "scope"),
         captured_at: optionalString(input.captured_at),
       }),
       wrapper: "object",
@@ -63,7 +58,7 @@ export const conductorActionHandlers: Record<ConductorActionName, ConductorActio
       context,
       phase: "execute",
       query: compactObject({
-        website_id: readRequiredString(input.website_id, "website_id"),
+        website_id: requiredInputString(input.website_id, "website_id"),
         per_page: readRequiredNumber(input.per_page, "per_page"),
         page,
         page_cursor: pageCursor,
@@ -79,8 +74,8 @@ export const conductorActionHandlers: Record<ConductorActionName, ConductorActio
       context,
       phase: "execute",
       query: {
-        website_id: readRequiredString(input.website_id, "website_id"),
-        url: readRequiredString(input.url, "url"),
+        website_id: requiredInputString(input.website_id, "website_id"),
+        url: requiredInputString(input.url, "url"),
       },
       wrapper: "object",
     });
@@ -91,8 +86,8 @@ export const conductorActionHandlers: Record<ConductorActionName, ConductorActio
       context,
       phase: "execute",
       query: compactObject({
-        website_id: readRequiredString(input.website_id, "website_id"),
-        scope: readRequiredString(input.scope, "scope"),
+        website_id: requiredInputString(input.website_id, "website_id"),
+        scope: requiredInputString(input.scope, "scope"),
         captured_at: optionalString(input.captured_at),
       }),
       wrapper: "array",
@@ -104,8 +99,8 @@ export const conductorActionHandlers: Record<ConductorActionName, ConductorActio
       context,
       phase: "execute",
       query: compactObject({
-        website_id: readRequiredString(input.website_id, "website_id"),
-        issue: readRequiredString(input.issue, "issue"),
+        website_id: requiredInputString(input.website_id, "website_id"),
+        issue: requiredInputString(input.issue, "issue"),
         page: optionalNumber(input.page),
         per_page: optionalNumber(input.per_page),
       }),
@@ -145,7 +140,6 @@ export const credentialValidators: CredentialValidators = {
         accountId: firstWebsiteId ?? "api_key",
         displayName: labelDetail ? `Conductor ${labelDetail}` : "Conductor API Token",
       },
-      grantedScopes: [],
       metadata: compactObject({
         apiBaseUrl: conductorApiBaseUrl,
         validationEndpoint: conductorWebsitesPath,
@@ -160,7 +154,7 @@ export const credentialValidators: CredentialValidators = {
 
 async function requestWrappedConductorJson(input: {
   path: string;
-  context: ConductorContext;
+  context: ApiKeyProviderContext;
   phase: ConductorRequestPhase;
   query?: Record<string, unknown>;
   wrapper: "array" | "object";
@@ -187,7 +181,7 @@ async function requestWrappedConductorJson(input: {
 
 async function requestConductorJson(input: {
   path: string;
-  context: ConductorContext;
+  context: ApiKeyProviderContext;
   phase: ConductorRequestPhase;
   query?: Record<string, unknown>;
 }): Promise<unknown> {
@@ -303,10 +297,6 @@ function requireObjectPayload(payload: unknown, label: string): Record<string, u
     throw new ProviderRequestError(502, `${label} response must be a JSON object`, payload);
   }
   return record;
-}
-
-function readRequiredString(value: unknown, fieldName: string): string {
-  return requiredString(value, fieldName, (message) => new ProviderRequestError(400, message));
 }
 
 function readRequiredNumber(value: unknown, fieldName: string): number {

@@ -1,8 +1,10 @@
-import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
-import type { ApiKeyProviderContext } from "../provider-runtime.ts";
+import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext } from "../provider-executors.ts";
 
 import { compactObject, optionalRecord, optionalString, requiredString } from "../../core/cast.ts";
-import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import { defineApiKeyProviderExecutors } from "../provider-executors.ts";
+import { defineProviderProxy } from "../provider-proxy.ts";
+import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const service = "userflow";
 const userflowApiBaseUrl = "https://api.userflow.com";
@@ -10,7 +12,7 @@ const userflowApiVersion = "2020-01-03";
 
 type UserflowActionHandler = (input: Record<string, unknown>, context: ApiKeyProviderContext) => Promise<unknown>;
 
-export const userflowActionHandlers: Record<string, UserflowActionHandler> = {
+export const userflowActionHandlers: ProviderActionHandlers<"userflow", UserflowActionHandler> = {
   async list_users(input, context) {
     return requestUserflow(context, buildListUsersUrl(input));
   },
@@ -46,6 +48,17 @@ export const userflowActionHandlers: Record<string, UserflowActionHandler> = {
 
 export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, userflowActionHandlers);
 
+export const proxy: ProviderProxyExecutor = defineProviderProxy({
+  service,
+  baseUrl: userflowApiBaseUrl,
+  auth: { type: "api_key_authorization", prefix: "Bearer " },
+  skipDnsValidation: true,
+  customizeRequest({ headers }) {
+    headers.set("accept", "application/json");
+    headers.set("userflow-version", userflowApiVersion);
+  },
+});
+
 export const credentialValidators: CredentialValidators = {
   async apiKey(input, { fetcher, signal }) {
     const context = { apiKey: input.apiKey, fetcher, signal };
@@ -54,7 +67,6 @@ export const credentialValidators: CredentialValidators = {
       profile: {
         displayName: readFirstUserLabel(payload) ?? "Userflow API Key",
       },
-      grantedScopes: [],
       metadata: {
         apiBaseUrl: userflowApiBaseUrl,
         apiVersion: userflowApiVersion,
@@ -90,7 +102,7 @@ function appendExpand(url: URL, expand: unknown): void {
 }
 
 async function deleteUserflowObject(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   resource: "users" | "groups",
   idField: "user_id" | "group_id",
   id: string,
@@ -100,7 +112,7 @@ async function deleteUserflowObject(
 }
 
 async function requestUserflow(
-  context: Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal">,
+  context: ApiKeyProviderContext,
   pathOrUrl: string | URL,
   input: { method?: "GET" | "POST" | "DELETE"; body?: Record<string, unknown> } = {},
   mode: "validate" | "execute" = "execute",

@@ -8,8 +8,14 @@ import type {
 } from "./cloudflare/cloudflare-bindings.ts";
 import type { CloudflareEnv } from "./cloudflare/cloudflare-env.ts";
 
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getProviderNetworkPolicy } from "../core/provider-network-policy.ts";
+import { MarketplaceService } from "../marketplace/marketplace-service.ts";
 import worker from "./cloudflare.ts";
+import { createWorkerSecretCodec } from "./secrets/worker-secret-codec.ts";
+import { D1RuntimeDatabase } from "./storage/d1/runtime-store.ts";
+import { SqliteD1Database } from "./storage/d1/test-database.ts";
 
 const provider = {
   service: "example",
@@ -21,8 +27,154 @@ const provider = {
 };
 
 describe("cloudflare worker", () => {
+  it("keeps MCP output modes separate in the application cache", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const binding = new SqliteD1Database();
+    const env = { ...createEnv(), DB: binding, OOMOL_CONNECT_RUNTIME_TOKEN: "test-mcp-token" };
+    try {
+      for (const outputMode of [undefined, "compact", "compatible"]) {
+        const client = new Client({ name: "worker-mcp-test", version: "0.0.0" });
+        try {
+          await client.connect(
+            new StreamableHTTPClientTransport(new URL("https://mcp-output.example.com/mcp"), {
+              fetch: (input, init) =>
+                worker.fetch(
+                  new Request(input, init),
+                  { ...env, OOMOL_CONNECT_MCP_OUTPUT_MODE: outputMode },
+                  createExecutionContext(),
+                ),
+              requestInit: { headers: { authorization: "Bearer test-mcp-token" } },
+            }),
+          );
+          const result = await client.callTool({ name: "list_apps", arguments: {} });
+          expect(result.structuredContent).toMatchObject({ ok: true, data: [] });
+          expect(result.content).toEqual([
+            {
+              type: "text",
+              text:
+                outputMode === "compact"
+                  ? "The complete result is available in structuredContent."
+                  : JSON.stringify(result.structuredContent),
+            },
+          ]);
+        } finally {
+          await client.close();
+        }
+      }
+    } finally {
+      binding.close();
+    }
+  });
+
+  it("does not reuse an application with a different network policy", async () => {
+    const policies: unknown[] = [];
+    vi.spyOn(MarketplaceService.prototype, "initialize").mockImplementation(async () => {
+      policies.push(getProviderNetworkPolicy());
+    });
+    const env = createEnv();
+    const fetchHealth = (network: Partial<CloudflareEnv>) =>
+      worker.fetch(
+        new Request("https://network-policy.example.com/health"),
+        { ...env, ...network },
+        createExecutionContext(),
+      );
+    await fetchHealth({ OOMOL_CONNECT_ALLOW_PRIVATE_NETWORK: "true" });
+    await fetchHealth({ OOMOL_CONNECT_ALLOW_PRIVATE_NETWORK: "false" });
+    await fetchHealth({
+      OOMOL_CONNECT_ALLOW_PRIVATE_NETWORK: "false",
+      OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS: "api.example.com",
+    });
+    const response = await fetchHealth({
+      OOMOL_CONNECT_ALLOW_PRIVATE_NETWORK: "false",
+      OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS: "api.example.com",
+    });
+    expect(response.status).toBe(200);
+    expect(policies).toEqual([
+      { allowPrivateNetwork: true, trustedHosts: [] },
+      { allowPrivateNetwork: false, trustedHosts: [] },
+      { allowPrivateNetwork: false, trustedHosts: ["api.example.com"] },
+    ]);
+  });
+
+  it.each(["", " ", "\t\n"])(
+    "fails closed for an empty or whitespace administrator token with OAuth enabled (%j)",
+    async (adminToken) => {
+      const env: CloudflareEnv = {
+        ...createEnv(),
+        OAUTH_KV: new MemoryKVNamespace(),
+        OOMOL_CONNECT_ORIGIN: "https://connect.example.com",
+        OOMOL_CONNECT_ENCRYPTION_KEY: "test-encryption-key",
+        OOMOL_CONNECT_ADMIN_TOKEN: adminToken,
+      };
+      const response = await worker.fetch(
+        new Request("https://connect.example.com/oauth/mcp/authorize"),
+        env,
+        createExecutionContext(),
+      );
+      expect(response.status).toBe(503);
+    },
+  );
+
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("deduplicates concurrent app creation and retries after a transient catalog failure", async () => {
+    // The app and catalog caches live in module state, so this test needs an isolate of its own:
+    // the shared `worker` above has already cached a healthy catalog. The reimported copy also
+    // gets a fresh `guarded-fetch` module, which `vitest.setup.ts` no longer holds off real DNS —
+    // keep this instance on local routes that perform no provider egress.
+    vi.resetModules();
+    const { default: isolatedWorker } = await import("./cloudflare.ts");
+    const fallback = memoryAssets(chunkedCatalog());
+    let indexAttempts = 0;
+    const assets: AssetsBinding = {
+      async fetch(request) {
+        if (new URL(request.url).pathname === "/catalog/index.json" && ++indexAttempts === 1) {
+          return new Response("upstream", { status: 500 });
+        }
+        return fallback.fetch(request);
+      },
+    };
+    const env: CloudflareEnv = {
+      DB: new EmptyMarketplaceD1Database(),
+      TRANSIT_FILES: new UnusedR2Bucket(),
+      ASSETS: assets,
+    };
+    const request = (): Request => new Request("https://catalog-retry.example.com/api/auth/session");
+    const failures = await Promise.allSettled([
+      isolatedWorker.fetch(request(), env, createExecutionContext()),
+      isolatedWorker.fetch(request(), env, createExecutionContext()),
+    ]);
+
+    for (const failure of failures) {
+      expect(failure).toMatchObject({
+        status: "rejected",
+        reason: {
+          message: "Cloudflare asset catalog request failed: /catalog/index.json returned 500",
+        },
+      });
+    }
+    expect(indexAttempts).toBe(1);
+
+    const response = await isolatedWorker.fetch(request(), env, createExecutionContext());
+    expect(response.status).toBe(200);
+    expect(indexAttempts).toBe(2);
+  });
+
+  it("rejects SaaS configuration when the origin comes only from the request URL", async () => {
+    const env = { ...createEnv(), OOMOL_CONNECT_ENCRYPTION_KEY: "saas-origin-test" };
+    const response = await worker.fetch(
+      new Request("https://untrusted-request.example/api/oauth/managed-project", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ baseUrl: "https://saas.example", projectApiKey: "project-secret" }),
+      }),
+      env,
+      createExecutionContext(),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: "oauth_source_configuration_error" } });
   });
 
   it("writes connection logs to console", async () => {
@@ -63,15 +215,32 @@ describe("cloudflare worker", () => {
     expect(JSON.stringify(info.mock.calls)).not.toContain("unused-secret");
   });
 
+  it("leaves dashboard JSON uncompressed for edge compression", async () => {
+    const response = await worker.fetch(
+      new Request("https://compression.example.com/api/auth/session", {
+        headers: { "accept-encoding": "gzip" },
+      }),
+      createEnv(),
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      adminAuthConfigured: false,
+      authenticated: true,
+    });
+  });
+
   it("selects the KV backend and round-trips a file when TRANSIT_FILES_BACKEND is kv", async () => {
     const namespace = new MemoryKVNamespace();
     // A distinct host keeps this out of the R2 test's cached app instance.
     const origin = "https://kv.example.com";
     const env: CloudflareEnv = {
-      DB: new UnusedD1Database(),
+      DB: new EmptyMarketplaceD1Database(),
       TRANSIT_FILES: namespace,
       TRANSIT_FILES_BACKEND: "kv",
-      ASSETS: memoryAssets({ "/catalog/apps.json": [provider] }),
+      ASSETS: memoryAssets(chunkedCatalog()),
     };
 
     const form = new FormData();
@@ -103,10 +272,10 @@ describe("cloudflare worker", () => {
     // A distinct host keeps this out of the other tests' cached app instances.
     const origin = "https://r2.example.com";
     const env: CloudflareEnv = {
-      DB: new UnusedD1Database(),
+      DB: new EmptyMarketplaceD1Database(),
       TRANSIT_FILES: bucket,
       // TRANSIT_FILES_BACKEND intentionally omitted -> must fall back to R2.
-      ASSETS: memoryAssets({ "/catalog/apps.json": [provider] }),
+      ASSETS: memoryAssets(chunkedCatalog()),
     };
 
     const form = new FormData();
@@ -132,15 +301,30 @@ describe("cloudflare worker", () => {
     expect(getResponse.status).toBe(200);
     await expect(getResponse.text()).resolves.toBe("r2-payload");
   });
+
+  it("returns uncompressed JSON for /api/auth/session", async () => {
+    const response = await worker.fetch(
+      new Request("https://connect.example.com/api/auth/session", {
+        headers: { "accept-encoding": "gzip" },
+      }),
+      createEnv(),
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      adminAuthConfigured: false,
+      authenticated: true,
+    });
+  });
 });
 
 function createEnv(): CloudflareEnv {
   return {
-    DB: new UnusedD1Database(),
+    DB: new EmptyMarketplaceD1Database(),
     TRANSIT_FILES: new UnusedR2Bucket(),
-    ASSETS: memoryAssets({
-      "/catalog/apps.json": [provider],
-    }),
+    ASSETS: memoryAssets(chunkedCatalog()),
   };
 }
 
@@ -148,6 +332,14 @@ function createExecutionContext(): Parameters<typeof worker.fetch>[2] {
   return {
     waitUntil() {},
     passThroughOnException() {},
+  };
+}
+
+/** The asset layout `scripts/copy-catalog-assets.ts` emits, so the worker tests boot the shipped path. */
+function chunkedCatalog(): Record<string, unknown> {
+  return {
+    "/catalog/index.json": { version: 1, providerCount: 1, chunks: ["apps-0000.json"] },
+    "/catalog/apps-0000.json": [provider],
   };
 }
 
@@ -164,9 +356,40 @@ function memoryAssets(files: Record<string, unknown>): AssetsBinding {
   };
 }
 
-class UnusedD1Database implements D1DatabaseBinding {
+class EmptyMarketplaceD1Database implements D1DatabaseBinding {
+  async batch(statements: D1PreparedStatementBinding[]): Promise<{ results: Record<string, unknown>[] }[]> {
+    return Promise.all(statements.map((statement) => statement.all<Record<string, unknown>>()));
+  }
   prepare(query: string): D1PreparedStatementBinding {
+    if (
+      [
+        "select value from marketplace_config where id = 1",
+        "select 1 from runtime_tokens limit 1",
+        "select service, revision from custom_mcp order by service",
+        "select * from custom_mcp order by service",
+      ].includes(query)
+    ) {
+      return new EmptyMarketplaceConfigStatement();
+    }
     throw new Error(`Unexpected D1 query: ${query}`);
+  }
+}
+
+class EmptyMarketplaceConfigStatement implements D1PreparedStatementBinding {
+  bind(): D1PreparedStatementBinding {
+    return this;
+  }
+
+  async first<T = Record<string, unknown>>(): Promise<T | null> {
+    return null;
+  }
+
+  async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
+    return { results: [] };
+  }
+
+  async run(): Promise<{ success: boolean; meta: { changes?: number } }> {
+    throw new Error("Unexpected D1 run");
   }
 }
 
@@ -275,3 +498,57 @@ async function toArrayBuffer(
 
   return await new Response(value).arrayBuffer();
 }
+
+it("processes scheduled cleanup without an HTTP request, public origin or asset bindings", async () => {
+  const binding = new SqliteD1Database();
+  const secretCodec = await createWorkerSecretCodec("scheduled-key");
+  const database = new D1RuntimeDatabase(binding, { secretCodec });
+  const project = { id: "managed", projectId: "project", baseUrl: "https://saas.example", apiKey: "project-key" };
+  await database.saasProjectStore.saveProject(project);
+  const now = new Date().toISOString();
+  const lease = await database.connectionRequestStore.createSaas({
+    connectionRequestId: crypto.randomUUID(),
+    connectionId: crypto.randomUUID(),
+    connectionName: "scheduled",
+    owner: "admin",
+    service: "example",
+    managedProjectId: "managed",
+    providerConfigId: "config",
+    externalUserId: "user",
+    createdAt: now,
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  });
+  await database.connectionRequestStore.saveSaasRequest(lease, "remote");
+  await database.connectionRequestStore.saveSaasCandidate(lease, {
+    connectedAccountId: "account",
+    status: "active",
+    comment: null,
+    profile: { accountId: "user", displayName: "User", grantedScopes: [] },
+  });
+  await database.connectionRequestStore.cancelSaas(lease.pending.connectionRequestId, "admin");
+  const fetcher = vi.fn<typeof fetch>(async () =>
+    Response.json({ success: true, data: { connectedAccountId: "account", deleted: true } }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const pending: Promise<unknown>[] = [];
+  try {
+    await worker.scheduled(
+      {},
+      { DB: binding, TRANSIT_FILES: new UnusedR2Bucket(), OOMOL_CONNECT_ENCRYPTION_KEY: "scheduled-key" },
+      {
+        waitUntil(promise) {
+          pending.push(promise);
+        },
+        passThroughOnException() {},
+      },
+    );
+    expect(pending).toHaveLength(1);
+    await Promise.all(pending);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0][1]?.method).toBe("DELETE");
+    expect(await database.saasProjectStore.getCleanupStats()).toMatchObject({ pending: 0, manual: 0 });
+  } finally {
+    binding.close();
+    vi.unstubAllGlobals();
+  }
+});

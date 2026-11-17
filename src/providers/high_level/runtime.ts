@@ -1,6 +1,5 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { HighLevelActionName } from "./actions.ts";
+import type { ProviderActionHandlers, ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-executors.ts";
 
 import { createHash } from "node:crypto";
 import {
@@ -13,13 +12,12 @@ import {
 } from "../../core/cast.ts";
 import { createProviderTimeout, providerUserAgent, ProviderRequestError } from "../provider-runtime.ts";
 
-const highLevelApiBaseUrl = "https://services.leadconnectorhq.com";
-const highLevelApiVersion = "2021-07-28";
-const highLevelDefaultRequestTimeoutMs = 30_000;
+export const highLevelApiBaseUrl = "https://services.leadconnectorhq.com";
+export const highLevelApiVersion = "2021-07-28";
 
 type HighLevelRequestPhase = "validate" | "execute";
 
-export interface HighLevelContext extends Pick<ApiKeyProviderContext, "apiKey" | "fetcher" | "signal"> {
+export interface HighLevelContext extends ApiKeyProviderContext {
   locationId: string;
 }
 
@@ -33,7 +31,7 @@ interface HighLevelRequestInput {
   body?: Record<string, unknown>;
 }
 
-export const highLevelActionHandlers: Record<HighLevelActionName, ProviderRuntimeHandler<HighLevelContext>> = {
+export const highLevelActionHandlers: ProviderActionHandlers<"high_level", ProviderRuntimeHandler<HighLevelContext>> = {
   async get_contact(input, context): Promise<unknown> {
     const payload = await requestHighLevelJson({
       path: `/contacts/${readPathId(input.contactId, "contactId")}`,
@@ -137,7 +135,6 @@ export async function validateHighLevelCredential(
       accountId: `high_level:${createHash("sha256").update(`${apiKey}:${locationId}`).digest("hex").slice(0, 16)}`,
       displayName: label,
     },
-    grantedScopes: [],
     metadata: {
       apiBaseUrl: highLevelApiBaseUrl,
       validationEndpoint,
@@ -151,7 +148,7 @@ export function readHighLevelLocationId(value: unknown): string {
 }
 
 async function requestHighLevelJson(input: HighLevelRequestInput): Promise<Record<string, unknown>> {
-  const timeout = createProviderTimeout(input.signal, highLevelDefaultRequestTimeoutMs);
+  const timeout = createProviderTimeout(input.signal);
   try {
     const response = await input.fetcher(buildHighLevelUrl(input.path), {
       method: input.method,

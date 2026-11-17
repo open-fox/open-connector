@@ -1,14 +1,20 @@
 import type { CredentialValidationResult } from "../../core/types.ts";
+import type { ProviderActionHandlers } from "../provider-executors.ts";
 import type { ReadMeActionName } from "./actions.ts";
 
 import { compactObject, optionalRecord, requiredRecord } from "../../core/cast.ts";
-import { ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
+import {
+  ProviderRequestError,
+  providerUserAgent,
+  providerInputError,
+  providerResponseError,
+} from "../provider-runtime.ts";
 
-const readmeApiBaseUrl = "https://dash.readme.com/api/v1";
+export const readmeApiBaseUrl: string = "https://dash.readme.com/api/v1";
 const validationPath = "/";
 
 function asObject(value: unknown): Record<string, unknown> {
-  return requiredRecord(value, "ReadMe payload", (message) => new ProviderRequestError(502, message));
+  return requiredRecord(value, "ReadMe payload", providerResponseError);
 }
 const asOptionalObject = optionalRecord;
 
@@ -34,7 +40,7 @@ interface ReadMeRequestOptions {
   expectNoContent?: boolean;
 }
 
-export const readmeActionHandlers: Record<ReadMeActionName, ReadMeActionHandler> = {
+export const readmeActionHandlers: ProviderActionHandlers<"readme", ReadMeActionHandler> = {
   get_project: async (context) => ({
     project: await requestReadMeObject({
       apiKey: context.apiKey,
@@ -389,7 +395,6 @@ export async function validateReadMeCredential(
     profile: {
       accountId: subdomain ?? "readme",
       displayName: name ?? subdomain ?? "ReadMe API Key",
-      grantedScopes: [],
     },
     metadata: compactObject({
       apiBaseUrl: readmeApiBaseUrl,
@@ -548,7 +553,7 @@ async function buildReadMeError(response: Response, mode: ReadMeRequestMode) {
 
   if (status === 401 || status === 403) {
     if (mode === "validate") {
-      return new ProviderRequestError(400, message);
+      return providerInputError(message);
     }
     return new ProviderRequestError(401, message);
   }
@@ -558,10 +563,10 @@ async function buildReadMeError(response: Response, mode: ReadMeRequestMode) {
   }
 
   if (status === 400 || status === 422) {
-    return new ProviderRequestError(400, message);
+    return providerInputError(message);
   }
 
-  return new ProviderRequestError(502, message);
+  return providerResponseError(message);
 }
 
 async function readReadMeErrorMessage(response: Response, status: number) {
@@ -589,5 +594,5 @@ function buildReadMeTransportError(error: unknown) {
   }
 
   const message = error instanceof Error ? error.message : "ReadMe request failed";
-  return new ProviderRequestError(502, message);
+  return providerResponseError(message);
 }

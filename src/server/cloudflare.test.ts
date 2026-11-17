@@ -301,6 +301,23 @@ describe("cloudflare worker", () => {
     expect(getResponse.status).toBe(200);
     await expect(getResponse.text()).resolves.toBe("r2-payload");
   });
+
+  it("returns uncompressed JSON for /api/auth/session", async () => {
+    const response = await worker.fetch(
+      new Request("https://connect.example.com/api/auth/session", {
+        headers: { "accept-encoding": "gzip" },
+      }),
+      createEnv(),
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      adminAuthConfigured: false,
+      authenticated: true,
+    });
+  });
 });
 
 function createEnv(): CloudflareEnv {

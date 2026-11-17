@@ -139,6 +139,22 @@ export interface CachedProviderCatalog {
   providers: ProviderDefinition[];
 }
 
+export function readAuthSession(value: unknown): AuthSession {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { adminAuthConfigured?: unknown }).adminAuthConfigured === "boolean" &&
+    typeof (value as { authenticated?: unknown }).authenticated === "boolean"
+  ) {
+    return {
+      adminAuthConfigured: (value as AuthSession).adminAuthConfigured,
+      authenticated: (value as AuthSession).authenticated,
+    };
+  }
+
+  return { adminAuthConfigured: true, authenticated: false };
+}
+
 export interface RuntimeLoadResult {
   authSession: AuthSession;
   data: AppData;
@@ -156,7 +172,7 @@ export async function loadRuntimeData(
   cachedCatalog?: CachedProviderCatalog,
   locale: AppLang = "en",
 ): Promise<RuntimeLoadResult> {
-  const authSession = await apiGet<AuthSession>("/api/auth/session", unlockToken);
+  const authSession = readAuthSession(await apiGet<unknown>("/api/auth/session", unlockToken));
   if (!authSession.authenticated) {
     return { authSession, data: emptyData };
   }

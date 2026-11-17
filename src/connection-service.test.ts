@@ -449,6 +449,41 @@ describe("ConnectionService", () => {
     });
   });
 
+  it("passes a Worker-safe default fetcher to credential validators", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(function (this: unknown) {
+        if (this !== undefined && this !== globalThis) {
+          throw new TypeError("Illegal invocation: function called with incorrect `this` reference.");
+        }
+        return Promise.resolve(Response.json({ ok: true }));
+      }) as typeof fetch,
+    );
+    const service = createService([apiKeyProvider], {
+      providerLoader: new FakeProviderLoader({
+        async apiKey(_input, { fetcher }) {
+          const context = { fetcher };
+          const response = await context.fetcher("https://provider.example/validate");
+          if (!response.ok) {
+            throw new Error("validation failed");
+          }
+        },
+      }),
+    });
+
+    await expect(
+      service.connectWithApiKey("uptimerobot", {
+        values: {
+          apiKey: "valid-key",
+          accountId: "account-1",
+        },
+      }),
+    ).resolves.toMatchObject({
+      service: "uptimerobot",
+      configured: true,
+    });
+  });
+
   it("passes the runtime logger to credential validators", async () => {
     const logger = createTestLogger();
     const validators: CredentialValidators = {

@@ -6,11 +6,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppI18n } from "./i18n";
+import { emptyData } from "./model";
 import {
   App,
   loadRuntimeData,
   nextAuthLoadState,
   nextLogoutState,
+  readAuthSession,
   subscribeToOAuthCompletions,
   UnlockView,
 } from "./ui";
@@ -91,6 +93,15 @@ describe("nextLogoutState", () => {
       ),
     ).toEqual({
       authSession: { adminAuthConfigured: true, authenticated: false },
+    });
+  });
+});
+
+describe("readAuthSession", () => {
+  it("treats a missing session payload as locked", () => {
+    expect(readAuthSession(null)).toEqual({
+      adminAuthConfigured: true,
+      authenticated: false,
     });
   });
 });
@@ -242,7 +253,7 @@ describe("loadRuntimeData", () => {
     const calls: string[] = [];
     vi.stubGlobal("fetch", async (path: RequestInfo | URL) => {
       calls.push(String(path));
-      if (path === "/api/auth/session") return Response.json({ authenticated: true });
+      if (path === "/api/auth/session") return Response.json({ adminAuthConfigured: true, authenticated: true });
       if (path === "/api/providers?locale=zh-CN")
         return Response.json([{ service: "tencent_meeting_mcp", displayName: "腾讯会议 MCP", setup: [] }]);
       if (path === "/api/providers?locale=en")
@@ -339,5 +350,22 @@ describe("loadRuntimeData", () => {
         auth: [{ type: "api_key", fields: [{ key: "apiKey", label: "Provider token" }] }],
       },
     ]);
+  });
+
+  it("keeps the console locked when /api/auth/session returns null", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: RequestInfo | URL) => {
+        if (path === "/api/auth/session") {
+          return Response.json(null);
+        }
+        throw new Error(`unexpected path ${String(path)}`);
+      }),
+    );
+
+    await expect(loadRuntimeData("")).resolves.toEqual({
+      authSession: { adminAuthConfigured: true, authenticated: false },
+      data: emptyData,
+    });
   });
 });
